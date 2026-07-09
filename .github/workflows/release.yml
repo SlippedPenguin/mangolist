@@ -43,8 +43,13 @@ jobs:
           # Built-in caching keyed off gradle files + wrapper props.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      # We invoke `gradle` directly (not `./gradlew`) because gradlew lives
+      # outside this commit. gradle/actions/setup-gradle@v4 above installs
+      # Gradle into PATH on the runner, so calling `gradle` works without
+      # committing the wrapper jar / scripts. Same Gradle pin (8.11.1) as
+      # gradle-wrapper.properties.
       - name: Build release APK
-        run: ./gradlew --no-daemon assembleRelease
+        run: gradle --no-daemon assembleRelease ${{ runner.debug == 'true' && '--info' || '' }}
 
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2
