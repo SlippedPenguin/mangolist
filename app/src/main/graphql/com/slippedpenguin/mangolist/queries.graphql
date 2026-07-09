@@ -1,0 +1,123 @@
+# AniList GraphQL operations.
+#
+# Apollo scans this file at build time and generates Kotlin types under
+# com.slippedpenguin.mangolist.graphql. The schema.graphqls is auto-fetched
+# from https://graphql.anilist.co on the first build via `--introspect`.
+#
+# Stubbed purpose: each operation is referenced from a Compose screen /
+# Apollo client wrapper in v1.0+. v1 scaffold compiles because Apollo's
+# codegen runs unconditionally on every .graphql file.
+
+query SearchAnime($search: String!, $perPage: Int = 12) {
+  Page(perPage: $perPage) {
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+      ...AnimeCardFields
+    }
+  }
+}
+
+query GetMediaDetails($id: Int!) {
+  Media(id: $id, type: ANIME) {
+    ...AnimeCardFields
+    description(asHtml: false)
+    status
+  }
+}
+
+# `Viewer` is the AniList equivalent of "the logged-in user". Returns null
+# if no auth token is attached.
+query GetViewer {
+  Viewer {
+    id
+    name
+    avatar { large medium }
+    statistics {
+      anime {
+        count
+        meanScore
+        episodesWatched
+        minutesWatched
+      }
+    }
+  }
+}
+
+# For sync: pull the user's full lists so the local DB can be reconciled.
+query GetMediaListCollection($userId: Int!, $type: MediaType = ANIME) {
+  MediaListCollection(userId: $userId, type: $type) {
+    lists {
+      name
+      isCustomList
+      entries {
+        ...ListEntryFields
+      }
+    }
+  }
+}
+
+# Push local edits back. Pass either id (existing entry) or mediaId (create new).
+mutation SaveMediaListEntry(
+  $id: Int
+  $mediaId: Int
+  $status: MediaListStatus
+  $progress: Int
+  $score: Float
+  $notes: String
+) {
+  SaveMediaListEntry(
+    id: $id
+    mediaId: $mediaId
+    status: $status
+    progress: $progress
+    score: $score
+    notes: $notes
+  ) {
+    id
+    status
+    progress
+    score
+    notes
+    updatedAt
+  }
+}
+
+# Airing schedule between two epoch timestamps (for the Airing tab).
+query GetAiringSchedule($airingAtGreater: Int!, $airingAtLesser: Int!) {
+  Page(perPage: 50) {
+    airingSchedules(
+      airingAt_greater: $airingAtGreater
+      airingAt_lesser: $airingAtLesser
+      sort: TIME
+    ) {
+      id
+      airingAt
+      episode
+      media {
+        ...AnimeCardFields
+      }
+    }
+  }
+}
+
+fragment AnimeCardFields on Media {
+  id
+  title { romaji english }
+  coverImage { large medium color }
+  episodes
+  format
+  averageScore
+  startDate { year }
+  genres
+}
+
+fragment ListEntryFields on MediaList {
+  id
+  status
+  progress
+  score
+  notes(asHtml: false)
+  updatedAt
+  media {
+    ...AnimeCardFields
+  }
+}

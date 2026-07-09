@@ -1,0 +1,77 @@
+[versions]
+# All versions pinned here. AGP / Kotlin are anchored conservative (late-2024 stable)
+# so the first build is most likely to succeed on a brand-new GitHub Actions runner.
+# Roll forward once the scaffold compiles.
+agp = "8.7.3"
+kotlin = "2.0.21"
+kotlinxSerialization = "1.7.3"
+ksp = "2.0.21-1.0.28"
+
+# AndroidX core / lifecycle / activity
+androidxCoreKtx = "1.15.0"
+androidxLifecycle = "2.8.7"
+androidxActivityCompose = "1.9.3"
+
+# Compose — pinned via BOM so individual artifacts stay in lockstep.
+composeBom = "2024.12.01"
+navigationCompose = "2.8.5"
+
+# Material Components for theme compatibility (system bars, etc.)
+materialComponents = "1.12.0"
+
+# Image loading
+coil = "2.7.0"
+
+# GraphQL
+apollo = "4.0.0"
+
+# Local DB
+room = "2.6.1"
+
+# Token storage
+datastore = "1.1.1"
+
+[libraries]
+# AndroidX core
+androidx-core-ktx               = { group = "androidx.core",          name = "core-ktx",                  version.ref = "androidxCoreKtx" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle",     name = "lifecycle-runtime-ktx",     version.ref = "androidxLifecycle" }
+androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "androidxLifecycle" }
+androidx-activity-compose       = { group = "androidx.activity",      name = "activity-compose",          version.ref = "androidxActivityCompose" }
+
+# Compose BOM and individual artifacts (version resolved transitively via BOM)
+androidx-compose-bom            = { group = "androidx.compose",       name = "compose-bom",               version.ref = "composeBom" }
+androidx-compose-ui             = { group = "androidx.compose.ui",    name = "ui" }
+androidx-compose-ui-graphics    = { group = "androidx.compose.ui",    name = "ui-graphics" }
+androidx-compose-ui-tooling     = { group = "androidx.compose.ui",    name = "ui-tooling" }
+androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+androidx-compose-material3      = { group = "androidx.compose.material3", name = "material3" }
+androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+androidx-navigation-compose     = { group = "androidx.navigation",    name = "navigation-compose",        version.ref = "navigationCompose" }
+
+# System bars / theme helpers (used by edge-to-edge / dynamic color)
+material                       = { group = "com.google.android.material", name = "material", version.ref = "materialComponents" }
+
+# Image loading
+coil-compose                   = { group = "io.coil-kt",            name = "coil-compose",              version.ref = "coil" }
+
+# GraphQL
+apollo-runtime                 = { group = "com.apollographql.apollo", name = "apollo-runtime",          version.ref = "apollo" }
+
+# Room
+androidx-room-runtime          = { group = "androidx.room",          name = "room-runtime",             version.ref = "room" }
+androidx-room-ktx              = { group = "androidx.room",          name = "room-ktx",                 version.ref = "room" }
+androidx-room-compiler         = { group = "androidx.room",          name = "room-compiler",            version.ref = "room" }
+
+# Token storage (Preferences flavor — small key/value, perfect for an OAuth token)
+androidx-datastore-preferences = { group = "androidx.datastore",     name = "datastore-preferences",    version.ref = "datastore" }
+
+# JSON for the tierlist blob and any cached AniList responses
+kotlinx-serialization-json     = { group = "org.jetbrains.kotlinx",  name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+
+[plugins]
+android-application = { id = "com.android.application",                    version.ref = "agp" }
+kotlin-android      = { id = "org.jetbrains.kotlin.android",               version.ref = "kotlin" }
+kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose",        version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+apollo              = { id = "com.apollographql.apollo",                   version.ref = "apollo" }
+ksp                 = { id = "com.google.devtools.ksp",                    version.ref = "ksp" }

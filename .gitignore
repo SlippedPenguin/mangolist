@@ -1,0 +1,30 @@
+# Gradle
+.gradle/
+build/
+**/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Outputs (we ship via GitHub Releases, never commit)
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Keystores — never commit signing keys, even debug ones.
+*.jks
+*.keystore
+
+# OS junk
+Thumbs.db

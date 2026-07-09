@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher icon foreground: three stacked bars in brand accent
+    (#ff3366 = the accent color from --accent in the HTML prototype).
+    Designed inside the 108dp safe zone (66dp centered inner ring).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Top tier bar -->
+    <path
+        android:fillColor="#ff3366"
+        android:pathData="M30,38 L78,38 L78,46 L30,46 Z" />
+
+    <!-- Middle tier bar -->
+    <path
+        android:fillColor="#ff3366"
+        android:pathData="M30,52 L78,52 L78,60 L30,60 Z" />
+
+    <!-- Bottom tier bar -->
+    <path
+        android:fillColor="#ff3366"
+        android:pathData="M30,66 L78,66 L78,74 L30,74 Z" />
+</vector>

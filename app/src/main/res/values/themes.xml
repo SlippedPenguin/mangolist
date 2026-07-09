@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        Material 3 host theme. Compose owns all real styling via
+        ui/theme/Theme.kt; this XML theme exists only to:
+        1. Provide a base for the Android theme system (status/nav bar, etc.).
+        2. Disable the ActionBar so Compose surface takes over.
+    -->
+    <style name="Theme.MangoList" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Edge-to-edge: let Compose paint under the system bars. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Light icons on the (dark) status bar — set true if you switch to light theme later. -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+    </style>
+
+</resources>

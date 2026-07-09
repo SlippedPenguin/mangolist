@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto Backup rules for Android 11 and below.
+    We include the Room DB (user's tierlist + cached AniList responses)
+    and DataStore prefs (AniList OAuth token) so a hardware migration
+    or reinstall restores the user's list.
+-->
+<full-backup-content>
+    <include domain="database" path="mangolist.db" />
+    <include domain="database" path="mangolist.db-journal" />
+    <include domain="database" path="mangolist.db-shm" />
+    <include domain="database" path="mangolist.db-wal" />
+    <include domain="sharedpref" path="token_prefs.xml" />
+</full-backup-content>
