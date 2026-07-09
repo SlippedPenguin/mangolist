@@ -60,13 +60,21 @@ android {
     }
 }
 
-// Apollo: scans app/src/main/graphql/ for *.graphql query files.
-// schema.graphqls is auto-fetched on the first build via introspection
-// (endpoint: https://graphql.anilist.co). Subsequent builds use the cached schema.
+// Apollo Kotlin 4.x:
+//   * `queries.graphql` defines the operations (lives next to this directory).
+//   * `schema.graphqls` is auto-fetched from AniList at build time by the
+//     `downloadAnilistApolloSchemaFromIntrospection` Gradle task (invoked from
+//     .github/workflows/release.yml BEFORE assembleRelease). Apollo then
+//     generates Kotlin types under com.slippedpenguin.mangolist.graphql that
+//     the screens consume via the AniListClient wrapper.
 apollo {
     service("anilist") {
         packageName.set("com.slippedpenguin.mangolist.graphql")
         generateKotlinModels.set(true)
+        introspection {
+            endpointUrl.set("https://graphql.anilist.co")
+            schemaFile.set(file("$projectDir/app/src/main/graphql/schema.graphqls"))
+        }
     }
 }
 

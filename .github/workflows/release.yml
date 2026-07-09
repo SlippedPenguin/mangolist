@@ -43,6 +43,13 @@ jobs:
           # Built-in caching keyed off gradle files + wrapper props.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      # Pull the live AniList GraphQL schema before assembly. The
+      # `downloadAnilistApolloSchemaFromIntrospection` task writes to the path
+      # configured by the apollo{} block in app/build.gradle.kts. We always
+      # re-run (no caching) so codegen + build reflect the current AniList API.
+      - name: Download AniList schema (Apollo)
+        run: gradle --no-daemon downloadAnilistApolloSchemaFromIntrospection
+
       # We invoke `gradle` directly (not `./gradlew`) because gradlew lives
       # outside this commit. gradle/actions/setup-gradle@v4 above installs
       # Gradle into PATH on the runner, so calling `gradle` works without
