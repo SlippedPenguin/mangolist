@@ -10,7 +10,7 @@
 
 query SearchAnime($search: String!, $perPage: Int = 12) {
   Page(perPage: $perPage) {
-    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+    media(search: $search, type: ANIME, sort: [SEARCH_MATCH]) {
       ...AnimeCardFields
     }
   }
@@ -87,7 +87,7 @@ query GetAiringSchedule($airingAtGreater: Int!, $airingAtLesser: Int!) {
     airingSchedules(
       airingAt_greater: $airingAtGreater
       airingAt_lesser: $airingAtLesser
-      sort: TIME
+      sort: [TIME]
     ) {
       id
       airingAt
@@ -115,7 +115,7 @@ fragment ListEntryFields on MediaList {
   status
   progress
   score
-  notes(asHtml: false)
+  notes
   updatedAt
   media {
     ...AnimeCardFields
