@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,13 +30,17 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -46,27 +51,36 @@ import com.slippedpenguin.mangolist.ui.components.StatusPill
 import com.slippedpenguin.mangolist.ui.theme.BgDeep
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.tierColor
+import kotlinx.coroutines.launch
 
 /*
- * Detail — hero image, status pill, episode +/− controls, tier changer.
- * v1.0 wires:
- *   - the − / + buttons to AppDatabase.update(currentEp clamp [0, episodes])
- *   - the "Change tier" sheet to a quick pop-up that resets elo on the
- *     engine's INITIAL_ELO and triggers the vs-mode ladder
- *   - SaveMediaListEntry mutation that pushes progress back to AniList
+ * Detail — hero image, status pill, episode +/− controls, tier picker.
+ * v0.2.0 wires:
+ *   - the − / + buttons to persist currentEp via dao.update(e.copy(...))
+ *   - "Change tier" AlertDialog → S/A/B/C/D/Unranked → dao.update with
+ *     tier reset and EloEngine.INITIAL_ELO to clear any stale vs-mode bump
+ *   - Sync to AniList stays v0.3 (Phase C) — SaveMediaListEntry mutation
  */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(navController: NavController, anilistId: Int) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
-    val entry by app.database.animeDao().observeById(anilistId)
-        .collectAsState(initial = null)
+    val dao = remember { app.database.animeDao() }
+    val scope = rememberCoroutineScope()
+    val entry by dao.observeById(anilistId).collectAsState(initial = null)
+    var showTierSheet by remember { mutableStateOf(false) }
 
     val e = entry
     Column(modifier = Modifier.fillMaxSize().background(BgDeep)) {
         TopAppBar(
-            title = { Text(e?.title ?: "Loading…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            title = {
+                Text(
+                    text = e?.title ?: "Loading…",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            },
             navigationIcon = {
                 IconButton(onClick = { navController.popBackStack() }) {
                     Icon(Icons.Outlined.ArrowBack, contentDescription = "Back")
@@ -79,13 +93,16 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
 
         if (e == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Not in your list yet — visit the Add tab.", color = TextSecondary)
+                Text(
+                    text = "Not in your list yet — visit the Add tab.",
+                    color = TextSecondary,
+                )
             }
             return@Column
         }
 
-        // Hero — cover image with a tier-coloured tint behind it so the screen
-        // never goes fully white during a load failure.
+        // Hero — cover image with a tier-tinted fallback colour behind it so the
+        // screen never goes fully white during a load failure.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,25 +134,105 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             EpisodeRow(
                 current = e.currentEp,
                 total = e.episodes,
-                onMinus = { /* v1.0: dao.update(e.copy(currentEp = max(0, current-1))) */ },
-                onPlus  = { /* v1.0: dao.update(e.copy(currentEp = min(total ?: +∞, current+1))) */ },
+                onMinus = {
+                    scope.launch {
+                        if (e.currentEp > 0) {
+                            dao.update(
+                                e.copy(
+                                    currentEp = e.currentEp - 1,
+                                    updatedAt = System.currentTimeMillis(),
+                                )
+                            )
+                        }
+                    }
+                },
+                onPlus = {
+                    scope.launch {
+                        val cap = e.episodes ?: Int.MAX_VALUE
+                        if (e.currentEp < cap) {
+                            dao.update(
+                                e.copy(
+                                    currentEp = e.currentEp + 1,
+                                    updatedAt = System.currentTimeMillis(),
+                                )
+                            )
+                        }
+                    }
+                },
             )
 
             Spacer(Modifier.height(20.dp))
 
             OutlinedButton(
-                onClick = { /* v1.0: open tier picker sheet → vs-mode */ },
+                onClick = { showTierSheet = true },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Change tier") }
+            ) {
+                Text(if (e.tier == null) "Add to tier" else "Change tier: ${e.tier}")
+            }
 
             Spacer(Modifier.height(8.dp))
 
             Button(
-                onClick = { /* v1.0: SaveMediaListEntry mutation */ },
+                onClick = { /* TODO v0.3: SaveMediaListEntry mutation */ },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = e.tier != null,
             ) { Text("Sync to AniList") }
         }
+    }
+
+    if (showTierSheet) {
+        AlertDialog(
+            onDismissRequest = { showTierSheet = false },
+            title = { Text("Set tier") },
+            text = {
+                Column {
+                    EloEngine.TIERS.forEach { tier ->
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    dao.update(
+                                        e.copy(
+                                            tier = tier,
+                                            elo = EloEngine.INITIAL_ELO,
+                                            updatedAt = System.currentTimeMillis(),
+                                        )
+                                    )
+                                }
+                                showTierSheet = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = tier,
+                                color = tierColor(tier),
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                dao.update(
+                                    e.copy(
+                                        tier = null,
+                                        elo = EloEngine.INITIAL_ELO,
+                                        updatedAt = System.currentTimeMillis(),
+                                    )
+                                )
+                            }
+                            showTierSheet = false
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(text = "Unranked", color = TextSecondary)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showTierSheet = false }) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -153,7 +250,9 @@ private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: (
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TextButton(onClick = onMinus, enabled = current > 0) { Text("−", style = MaterialTheme.typography.titleLarge) }
+            TextButton(onClick = onMinus, enabled = current > 0) {
+                Text(text = "−", style = MaterialTheme.typography.titleLarge)
+            }
             Text(
                 text = "$current / ${total ?: "?"}",
                 style = MaterialTheme.typography.titleLarge,
@@ -163,12 +262,14 @@ private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: (
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.surfaceVariant)
                     .padding(vertical = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                textAlign = TextAlign.Center,
             )
             TextButton(
                 onClick = onPlus,
                 enabled = total?.let { current < it } ?: true,
-            ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+            ) {
+                Text(text = "+", style = MaterialTheme.typography.titleLarge)
+            }
         }
     }
 }
