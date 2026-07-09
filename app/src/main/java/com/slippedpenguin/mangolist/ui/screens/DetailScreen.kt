@@ -189,14 +189,14 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                     EloEngine.TIERS.forEach { tier ->
                         TextButton(
                             onClick = {
-                                scope.launch {
-                                    dao.update(
-                                        e.copy(
-                                            tier = tier,
-                                            elo = EloEngine.INITIAL_ELO,
-                                            updatedAt = System.currentTimeMillis(),
-                                        )
-                                    )
+                                e?.copy(
+                                    tier = tier,
+                                    elo = EloEngine.INITIAL_ELO,
+                                    updatedAt = System.currentTimeMillis(),
+                                )?.let { updated ->
+                                    scope.launch {
+                                        dao.update(updated)
+                                    }
                                 }
                                 showTierSheet = false
                             },
@@ -212,14 +212,14 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                     }
                     TextButton(
                         onClick = {
-                            scope.launch {
-                                dao.update(
-                                    e.copy(
-                                        tier = null,
-                                        elo = EloEngine.INITIAL_ELO,
-                                        updatedAt = System.currentTimeMillis(),
-                                    )
-                                )
+                            e?.copy(
+                                tier = null,
+                                elo = EloEngine.INITIAL_ELO,
+                                updatedAt = System.currentTimeMillis(),
+                            )?.let { updated ->
+                                scope.launch {
+                                    dao.update(updated)
+                                }
                             }
                             showTierSheet = false
                         },
