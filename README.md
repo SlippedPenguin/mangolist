@@ -6,6 +6,7 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/SlippedPenguin/mangolist/release.yml?branch=main&style=flat-square)](https://github.com/SlippedPenguin/mangolist/actions/workflows/release.yml)
 [![Android](https://img.shields.io/badge/Android-26%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org)
+
 ## Why
 
 I track a lot of anime. Star ratings don't capture how I actually rank shows — that comes from head-to-head comparisons. **MangoList** is a personal-use AniHyou-style tracker with one novel feature: rank the shows you've watched through short head-to-head matches, with Elo scores driving your tierlist automatically. No spreadsheets, no stars-out-of-5 wars, no "is this a 7 or an 8?" debates.
