@@ -71,6 +71,12 @@ apollo {
     service("anilist") {
         packageName.set("com.slippedpenguin.mangolist.graphql")
         generateKotlinModels.set(true)
+        // Tell Apollo Kotlin 4.x which file codegen should READ as the schema.
+        // The download task below writes to this same path; without explicit
+        // registration here, codegen errors with "No schema found" because
+        // Apollo validates at config / task-execution time BEFORE the
+        // download task has had a chance to populate the file.
+        schemaFiles.from(files("$projectDir/app/src/main/graphql/schema.graphqls"))
         introspection {
             endpointUrl.set("https://graphql.anilist.co")
             schemaFile.set(file("$projectDir/app/src/main/graphql/schema.graphqls"))
@@ -116,4 +122,14 @@ dependencies {
 
     // JSON for the cached entries blob
     implementation(libs.kotlinx.serialization.json)
+}
+
+// Wire Apollo codegen to depend on the introspection download so codegen
+// always sees a fresh AniList schema. Without this, codegen runs against a
+// stale or absent schema.graphqls because Apollo's download task is
+// independent of the assemble graph by default.
+afterEvaluate {
+    tasks.named("generateAnilistApolloSources").configure {
+        dependsOn("downloadAnilistApolloSchemaFromIntrospection")
+    }
 }

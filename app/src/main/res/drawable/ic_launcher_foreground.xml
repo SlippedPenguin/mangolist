@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Launcher icon foreground: three stacked bars in brand accent
-    (#ff3366 = the accent color from --accent in the HTML prototype).
+    (#ff3366 = the accent color from Accent in the HTML prototype).
     Designed inside the 108dp safe zone (66dp centered inner ring).
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
