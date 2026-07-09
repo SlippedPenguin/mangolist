@@ -72,9 +72,12 @@ apollo {
 
 dependencies {
     // Core / lifecycle
+    // NOTE: we intentionally don't pull androidx-lifecycle-viewmodel-ktx
+    // separately — Compose's lifecycle-viewmodel-compose already brings in the
+    // ViewModel APIs and `androidx.lifecycle:lifecycle-viewmodel` is on the
+    // classpath via dependencies.androidx-lifecycle-runtime-ktx transitively.
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
 
