@@ -1,6 +1,7 @@
 package com.slippedpenguin.mangolist
 
 import android.app.Application
+import com.slippedpenguin.mangolist.data.AniListClient
 import com.slippedpenguin.mangolist.data.TokenStore
 import com.slippedpenguin.mangolist.data.local.AnimeDatabase
 
@@ -12,8 +13,9 @@ import com.slippedpenguin.mangolist.data.local.AnimeDatabase
  */
 class AnimeApp : Application() {
 
-    val database:   AnimeDatabase by lazy { AnimeDatabase.getInstance(this) }
-    val tokenStore: TokenStore    by lazy { TokenStore(this) }
+    val database:     AnimeDatabase by lazy { AnimeDatabase.getInstance(this) }
+    val tokenStore:   TokenStore    by lazy { TokenStore(this) }
+    val anilistClient: AniListClient by lazy { AniListClient(this) }
 
     override fun onCreate() {
         super.onCreate()
