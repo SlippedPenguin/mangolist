@@ -6,8 +6,6 @@
 [![Build Status](https://img.shields.io/github/actions/workflow/status/SlippedPenguin/mangolist/release.yml?branch=main&style=flat-square)](https://github.com/SlippedPenguin/mangolist/actions/workflows/release.yml)
 [![Android](https://img.shields.io/badge/Android-26%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com)
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Compose](https://img.shields.io/badge/Jetpack%20Compose-1.3.x-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
-
 ## Why
 
 I track a lot of anime. Star ratings don't capture how I actually rank shows — that comes from head-to-head comparisons. **MangoList** is a personal-use AniHyou-style tracker with one novel feature: rank the shows you've watched through short head-to-head matches, with Elo scores driving your tierlist automatically. No spreadsheets, no stars-out-of-5 wars, no "is this a 7 or an 8?" debates.
@@ -26,7 +24,7 @@ I track a lot of anime. Star ratings don't capture how I actually rank shows —
 
 ## Tech stack
 
-- **Native Android** — Kotlin 2.0.21 + Jetpack Compose (Material 3 1.3.x, Compose BOM 2024.12.01)
+- **Native Android** — Kotlin 2.0.21 + Jetpack Compose (Material 3 1.3.1, Compose BOM 2024.12.01)
 - **Persistence** — Room 2.6.1 (offline cache) + DataStore 1.1.1 (AniList access token)
 - **Networking** — Apollo Kotlin 4.0.0 against the [AniList GraphQL v2](https://docs.anilist.co) endpoint
 - **Image loading** — Coil 2.7.0
@@ -57,13 +55,15 @@ git push origin v0.X.Y
 
 GitHub Actions will assemble a release APK in ~5 minutes and attach it to the release tag.
 
-For local builds, install JDK 17 + Android SDK cmdline tools (~2 GB total), then:
+For local builds:
 
-```bash
-gradle assembleDebug         # debug APK, local path: app/build/outputs/apk/debug/
-```
-
-The repo intentionally omits the Gradle wrapper jar/script — the workflow installs Gradle directly via `gradle/actions/setup-gradle@v4`. If you want offline wrapper support, run `gradle wrapper` once locally and commit the generated `gradlew`, `gradlew.bat`, and `gradle/wrapper/gradle-wrapper.jar`.
+1. Install **JDK 17**, the **Android SDK cmdline tools**, and **Gradle 8.11+** so `javac`, `sdkmanager`, and `gradle` are all on `$PATH` (~2.5 GB total).
+2. Generate the wrapper once at the repo root so future local builds don't need a system Gradle:
+   ```bash
+   gradle wrapper --gradle-version 8.11.1
+   ```
+   Then commit the three generated files: `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar`. The repo intentionally omits the wrapper — the CI workflow installs Gradle directly via `gradle/actions/setup-gradle@v4`, so the wrapper is purely for your local dev experience.
+3. Run `./gradlew assembleDebug` — debug APK lands at `app/build/outputs/apk/debug/`.
 
 ## Project layout
 
