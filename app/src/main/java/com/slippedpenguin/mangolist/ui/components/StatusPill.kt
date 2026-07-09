@@ -27,7 +27,7 @@ fun StatusPill(
     status: String,
     modifier: Modifier = Modifier,
 ) {
-    val (label, color): Pair<String, Color> = when (status) {
+    val (label, color) = when (status) {
         "plan"      -> "PLAN"      to TierUnranked
         "watching"  -> "WATCHING"  to Accent
         "completed" -> "COMPLETED" to TierC
