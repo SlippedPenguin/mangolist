@@ -52,7 +52,7 @@ object EloEngine {
         var bestDist = Double.MAX_VALUE
         for (t in TIERS) {
             val med = medianElo(t, entries) ?: continue
-            val dist = abs(med - rootElo)
+            val dist = abs(med - rootElo).toDouble()
             if (dist <= bestDist) { bestDist = dist; bestTier = t }
         }
         return bestTier
