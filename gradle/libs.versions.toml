@@ -26,12 +26,14 @@ coil = "2.7.0"
 apollo = "4.0.0"
 
 # Local DB
-room = "2.6.1"
-
-# Token storage
+room = "2.6.1"# Token storage
 datastore = "1.1.1"
 
-[libraries]
+# Chrome Custom Tabs — used to launch the AniList OAuth authorize URL and
+# surface the redirect back into our app via deep-link.
+androidxBrowser = "1.8.0"
+
+[libraries] 
 # AndroidX core
 androidx-core-ktx               = { group = "androidx.core",          name = "core-ktx",                  version.ref = "androidxCoreKtx" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle",     name = "lifecycle-runtime-ktx",     version.ref = "androidxLifecycle" }
@@ -63,12 +65,13 @@ androidx-room-ktx              = { group = "androidx.room",          name = "roo
 androidx-room-compiler         = { group = "androidx.room",          name = "room-compiler",            version.ref = "room" }
 
 # Token storage (Preferences flavor — small key/value, perfect for an OAuth token)
-androidx-datastore-preferences = { group = "androidx.datastore",     name = "datastore-preferences",    version.ref = "datastore" }
-
-# JSON for the tierlist blob and any cached AniList responses
+androidx-datastore-preferences = { group = "androidx.datastore",     name = "datastore-preferences",    version.ref = "datastore" }# JSON for the tierlist blob and any cached AniList responses
 kotlinx-serialization-json     = { group = "org.jetbrains.kotlinx",  name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
-[plugins]
+# Chrome Custom Tabs — AniList OAuth authorize URL launcher
+androidx-browser               = { group = "androidx.browser",       name = "browser",                   version.ref = "androidxBrowser" }
+
+[plugins] 
 android-application = { id = "com.android.application",                    version.ref = "agp" }
 kotlin-android      = { id = "org.jetbrains.kotlin.android",               version.ref = "kotlin" }
 kotlin-compose      = { id = "org.jetbrains.kotlin.plugin.compose",        version.ref = "kotlin" }

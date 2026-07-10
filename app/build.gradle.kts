@@ -1,4 +1,19 @@
 import com.apollographql.apollo.gradle.api.ApolloExtension
+import java.util.Properties
+
+/*
+ * AniList OAuth credentials are read from `local.properties` (gitignored) so
+ * secrets never leak. Add to your local.properties:
+ *   anilist.client.id=<your-client-id-from-anilist-co-api-v2-oauth>
+ *   anilist.redirect.uri=com.slippedpenguin.mangolist://callback
+ *
+ * If unset, the build still succeeds — the URLs it generates just won't work
+ * until you register the app at https://anilist.co/api/v2/oauth.
+ */
+val anilistLocalProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -23,6 +38,19 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        // AniList OAuth — values flow from local.properties into BuildConfig so
+        // the rest of the code can reference BuildConfig.ANILIST_CLIENT_ID and
+        // BuildConfig.ANILIST_REDIRECT_URI without runtime secrets wiring.
+        buildConfigField(
+            "String",
+            "ANILIST_CLIENT_ID",
+            "\"${anilistLocalProps.getProperty("anilist.client.id", "").trim()}\"",
+        )
+        buildConfigField(
+            "String",
+            "ANILIST_REDIRECT_URI",
+            "\"${anilistLocalProps.getProperty("anilist.redirect.uri", "com.slippedpenguin.mangolist://callback").trim()}\"",
+        )
     }
 
     buildTypes {
@@ -122,6 +150,11 @@ dependencies {
 
     // JSON for the cached entries blob
     implementation(libs.kotlinx.serialization.json)
+
+    // Chrome Custom Tabs — opens the AniList OAuth authorize URL in the
+    // user's existing browser, and lets our MainActivity catch the redirect
+    // via the deep-link intent-filter (configured in a follow-up commit).
+    implementation(libs.androidx.browser)
 }
 
 // Wire Apollo codegen to depend on the introspection download so codegen
