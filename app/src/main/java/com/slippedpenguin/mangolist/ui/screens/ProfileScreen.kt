@@ -1,5 +1,7 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -26,10 +28,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
+import com.slippedpenguin.mangolist.BuildConfig
 
 /*
- * Profile — login state, viewer stats, sync button. v1.0 wires AniList's
- * implicit-flow / PIN exchange and GetViewer.GetStatistics.Anime.
+ * Profile — login state, viewer stats, sync button. v0.3.0 wires AniList's
+ * implicit-flow Chrome Custom Tabs login via buildAniListAuthorizeUrl().
+ * After the token lands back in TokenStore (MainActivity.handleAuthRedirect),
+ * the header text flips from "Not signed in" to "Hi, <name>".
  */
 @Composable
 fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
@@ -81,14 +86,39 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
         if (userName == null) {
             Button(
-                onClick = { /* v1.0: launch AniList PIN flow */ },
+                onClick = {
+                    val intent = CustomTabsIntent.Builder().build()
+                    intent.launchUrl(context, Uri.parse(buildAniListAuthorizeUrl()))
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Log in with AniList") }
         } else {
             OutlinedButton(
-                onClick = { /* v1.0: pull GetMediaListCollection, reconcile */ },
+                onClick = { /* v0.4: pull GetMediaListCollection, reconcile */ },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sync now") }
         }
+    }
+}
+
+/*
+ * Builds the AniList OAuth implicit-flow authorize URL:
+ *   https://anilist.co/api/v2/oauth/authorize
+ *     ?client_id=<from-BuildConfig>
+ *     &response_type=token
+ *     &redirect_uri=com.slippedpenguin.mangolist://callback
+ *
+ * Implicit flow puts the access_token in the URL fragment (#access_token=...)
+ * so we don't need a client_secret. URL-encode both values just in case either
+ * ever picks up a reserved character.
+ */
+private fun buildAniListAuthorizeUrl(): String {
+    val clientId    = BuildConfig.ANILIST_CLIENT_ID
+    val redirectUri = BuildConfig.ANILIST_REDIRECT_URI
+    return buildString {
+        append("https://anilist.co/api/v2/oauth/authorize")
+        append("?client_id=").append(Uri.encode(clientId))
+        append("&response_type=token")
+        append("&redirect_uri=").append(Uri.encode(redirectUri))
     }
 }

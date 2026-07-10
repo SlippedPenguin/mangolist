@@ -78,7 +78,14 @@ class MainActivity : ComponentActivity() {
         val token = parseAccessToken(data) ?: return
         val app = applicationContext as AnimeApp
         ioScope.launch {
-            app.tokenStore.saveToken(token, userId = 0, userName = null)
+            // Backfill viewer info via GetViewer. May fail (bad token, network
+            // drop) — fall back to placeholder userId=0 so the token still
+            // saves either way. Profile header will then populate on the next
+            // collectAsState when this completes.
+            val viewer = app.anilistClient.getViewer(token)
+            val userId   = viewer?.id ?: 0
+            val userName = viewer?.name
+            app.tokenStore.saveToken(token, userId = userId, userName = userName)
         }
     }
 
