@@ -21,14 +21,26 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.MangoList">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+                 AniList OAuth implicit-flow redirect: after the user authorizes
+                 in Chrome Custom Tab, the browser hops back into the app via
+                 com.slippedpenguin.mangolist://callback with the OAuth token in
+                 the URL fragment (#access_token=...). MainActivity parses that
+                 fragment in onCreate / onNewIntent and writes to TokenStore.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.slippedpenguin.mangolist" android:host="callback" />
+            </intent-filter>
         </activity>
-
-        <!-- AniList PIN OAuth deep-link intent-filter (configured in v1.x) -->
     </application>
 
 </manifest>

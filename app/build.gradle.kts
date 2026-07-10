@@ -40,16 +40,18 @@ android {
         }
         // AniList OAuth — values flow from local.properties into BuildConfig so
         // the rest of the code can reference BuildConfig.ANILIST_CLIENT_ID and
-        // BuildConfig.ANILIST_REDIRECT_URI without runtime secrets wiring.
+        // BuildConfig.ANILIST_REDIRECT_URI without runtime secrets wiring. The
+        // .trim().trim('"') chain tolerates a user quoting the value in
+        // local.properties — a typical IntelliJ / Android Studio pass.
         buildConfigField(
             "String",
             "ANILIST_CLIENT_ID",
-            "\"${anilistLocalProps.getProperty("anilist.client.id", "").trim()}\"",
+            "\"${anilistLocalProps.getProperty("anilist.client.id", "").trim().trim('"')}\"",
         )
         buildConfigField(
             "String",
             "ANILIST_REDIRECT_URI",
-            "\"${anilistLocalProps.getProperty("anilist.redirect.uri", "com.slippedpenguin.mangolist://callback").trim()}\"",
+            "\"${anilistLocalProps.getProperty("anilist.redirect.uri", "com.slippedpenguin.mangolist://callback").trim().trim('"')}\"",
         )
     }
 
