@@ -21,6 +21,45 @@ query GetMediaDetails($id: Int!) {
     ...AnimeCardFields
     description(asHtml: false)
     status
+    bannerImage
+    season
+    duration
+    studios(isMain: true) {
+      nodes {
+        name
+      }
+    }
+    characters(sort: [ROLE, RELEVANCE], perPage: 15) {
+      edges {
+        role
+        node {
+          id
+          name {
+            full
+          }
+          image {
+            large
+          }
+        }
+      }
+    }
+    relations {
+      edges {
+        relationType
+        node {
+          id
+          title {
+            romaji
+            english
+          }
+          coverImage {
+            large
+          }
+          type
+          format
+        }
+      }
+    }
   }
 }
 
