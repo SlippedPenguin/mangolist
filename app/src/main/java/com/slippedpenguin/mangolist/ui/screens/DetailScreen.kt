@@ -242,26 +242,27 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                 )
             }
         }
-    }
 
-    // Inline sync feedback — green for ok, accent-red for failure.
-    syncFeedback?.let { (msg, isError) ->
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(20.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(
-                    if (isError) Accent.copy(alpha = 0.15f) else TierC.copy(alpha = 0.15f),
+        // Inline sync feedback — green for ok, accent-red for failure.
+        // Live inside the outer Box's BoxScope so .align(BottomCenter) compiles.
+        syncFeedback?.let { (msg, isError) ->
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(20.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isError) Accent.copy(alpha = 0.15f) else TierC.copy(alpha = 0.15f),
+                    )
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = msg,
+                    color = if (isError) Accent else TierC,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
                 )
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = msg,
-                color = if (isError) Accent else TierC,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-            )
+            }
         }
     }
 

@@ -194,8 +194,12 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 score   = Optional.present(tierToScore(entry.tier)),
                 notes   = Optional.present(entry.notes.takeIf { it.isNotBlank() }),
             )
+            // AniList's schema defines the mutation field as `saveMediaListEntry`
+ // (camelCase per GraphQL convention); Apollo Kotlin codegen uses the schema
+            // field name as the Kotlin property name, so the response accessor is
+            // `saveMediaListEntry` regardless of how the operation syntax cased it.
             val response = authClient.mutation(mutation).execute()
-            response.data?.SaveMediaListEntry?.id
+            response.data?.saveMediaListEntry?.id
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "saveEntry failed", e)
             null
