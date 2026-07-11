@@ -518,12 +518,14 @@ private fun eloRangeOf(entries: List<AnimeEntry>): IntRange? {
 }
 
 private fun eloRangeHint(tier: String?, count: Int, eloRange: IntRange?): String {
+    val rangeTail = "Elo · long-press to rank"
     if (count == 0) {
-        return if (tier == null) "long-press any card to rank" else "tap a card → long-press to rank"
+        return if (tier == null) "long-press any card to rank"
+               else "tap a card → long-press to rank"
     }
     val lo = eloRange?.first ?: return "long-press to rank further"
-    val hi = eloRange?.last ?: return "$lo-$hi Elo · long-press to rank"
-    return "$lo-$hi Elo · long-press to rank"
+    val hi = eloRange?.last ?: return "long-press to rank further"
+    return "$lo-$hi $rangeTail"
 }
 
 private fun tierHint(

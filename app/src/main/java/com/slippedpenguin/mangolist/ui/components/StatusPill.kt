@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BorderStrong
+import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TierC
 import com.slippedpenguin.mangolist.ui.theme.TierD
 import com.slippedpenguin.mangolist.ui.theme.TierUnranked

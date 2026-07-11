@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +33,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
@@ -118,22 +118,21 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
         if (stats.statusCounts.isNotEmpty()) {
             BreakdownCard(title = "By status") {
-                stats.statusCounts.entries
-                    .sortedByDescending { it.value }
-                    .forEach { (status, count) ->
-                        BreakdownRow(
-                            label = status.uppercase(),
-                            count = count,
-                            color = statusColor(status),
-                        )
-                    }
+                val byCount = stats.statusCounts.sortedByDescending { it.second }
+                for ((status, count) in byCount) {
+                    BreakdownRow(
+                        label = status.uppercase(),
+                        count = count,
+                        color = statusColor(status),
+                    )
+                }
             }
             Spacer(Modifier.height(16.dp))
         }
 
         if (stats.tierCounts.isNotEmpty()) {
             BreakdownCard(title = "By tier") {
-                stats.tierCounts.entries.forEach { (tier, count) ->
+                for ((tier, count) in stats.tierCounts) {
                     BreakdownRow(
                         label = tier ?: "Unranked",
                         count = count,
@@ -280,7 +279,7 @@ private fun StatRow(label: String, value: String, hint: String? = null) {
 }
 
 @Composable
-private fun BreakdownCard(title: String, content: @Composable Column.() -> Unit) {
+private fun BreakdownCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
