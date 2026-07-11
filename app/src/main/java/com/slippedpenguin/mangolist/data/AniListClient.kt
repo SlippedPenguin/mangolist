@@ -147,7 +147,13 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             }
 
         return MediaDetails(
-            id            = cf?.id ?: m.id,
+            // Apollo Kotlin 4.x with `operationBased` codegen and a fragment
+            // spread on the outer Media type puts `id` inside the
+            // AnimeCardFields wrapper (no inlining) — there's no top-level `id`
+            // on the generated `Media` class, so `m.id` is unreferencable. The
+            // fragment is non-null whenever Media resolves, so fall back to 0
+            // (sentinel) defensively rather than reaching for `m.id`.
+            id            = cf?.id ?: 0,
             titleEnglish  = cf?.title?.english,
             titleRomaji   = cf?.title?.romaji,
             coverLarge    = cf?.coverImage?.large ?: cf?.coverImage?.medium,
