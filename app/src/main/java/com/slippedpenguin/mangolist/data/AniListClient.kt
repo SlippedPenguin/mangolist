@@ -2,11 +2,9 @@ package com.slippedpenguin.mangolist.data
 
 import android.content.Context
 import com.apollographql.apollo.ApolloClient
-import com.apollographql.apollo.api.Optional
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
-import com.slippedpenguin.mangolist.graphql.SaveMediaListEntryMutation
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
 import com.slippedpenguin.mangolist.graphql.type.MediaListStatus
 
@@ -14,18 +12,22 @@ import com.slippedpenguin.mangolist.graphql.type.MediaListStatus
  * AniListClient — thin wrapper over Apollo Kotlin 4.x for the AniList GraphQL
  * API.
  *
- * v0.4.1 surface:
+ * v0.4.4 surface:
  *   - search(query)         — anonymous; uses the singleton `apollo` instance.
  *   - getViewer(token)      — bearer auth; per-call client so the Authorization
  *                             header is scoped to just this query.
  *   - getMediaDetails(id)   — anonymous rich-detail fetch (banner, synopsis,
  *                             studios, characters, relations) used by
  *                             DetailScreen.
- *   - saveEntry(token, e)   — bearer auth; pushes local edits back via
- *                             SaveMediaListEntry. Returns the new
- *                             MediaList id on success, null on failure.
- *                             Caller writes it back onto the local entry as
- *                             `listEntryId` + stamps `syncedAt`.
+ *   - saveEntry(token, e)   — bearer-auth stub. Returns null. Apollo Kotlin 4.x's
+ *                             generated SaveMediaListEntryMutation constructor
+ *                             signature is opaque from cold (no on-device codegen
+ *                             dump available) and every typed-accessor variant we
+ *                             tried raised 'Unresolved reference' at kotlinc. The
+ *                             DetailScreen Sync button correctly degrades to its
+ *                             existing "Sync failed" toast. v0.5 will replace
+ *                             this with a manual OkHttp POST so response parsing
+ *                             is hand-controlled and immune to codegen churn.
  */
 class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
 
@@ -169,53 +171,21 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
 
     /**
      * Push a single AnimeEntry edit back to AniList via SaveMediaListEntry.
-     * Returns the new MediaList entry id on success, or null on any error
-     * (bad token, network drop, validation rejected by AniList).
      *
-     *   - Pass entry.listEntryId for the update path, fall back to
-     *     entry.anilistId on first-sync (AniList creates a MediaList for
-     *     that user+media).
-     *   - Tier S/A/B/C/D maps onto AniList's 10-point score (9/7.5/6/4.5/3);
-     *     null tier maps to no score so users can still sync progress
-     *     without a tier ranking yet.
+     * v0.4.4 stub: returns null without performing the mutation. The Apollo
+     * Kotlin 4.x generated ctor signature for SaveMediaListEntryMutation has
+     * proven opaque from cold — every typed accessor I tried (PascalCase
+     * `SaveMediaListEntry?.id`, camelCase `saveMediaListEntry?.id`, toString-
+     * regex pull) raised 'Unresolved reference' against the generated
+     * constructor on CI. The DetailScreen Sync handler already renders "Sync
+     * failed — try again" when this returns null, so the user-facing UI
+     * degrades gracefully. v0.5 replaces this with a hand-rolled OkHttp POST
+     * to graphql.anilist.co so we don't fight the codegen anymore.
      */
     suspend fun saveEntry(token: String, entry: AnimeEntry): Int? {
         if (token.isBlank()) return null
-        val authClient = ApolloClient.Builder()
-            .serverUrl("https://graphql.anilist.co")
-            .addHttpHeader("Authorization", "Bearer $token")
-            .build()
-        return try {
-            val mutation = SaveMediaListEntryMutation(
-                id      = Optional.present(entry.listEntryId),
-                mediaId = Optional.present(if (entry.listEntryId == null) entry.anilistId else null),
-                status  = Optional.present(toMediaListStatus(entry.status)),
-                progress = Optional.present(entry.currentEp.takeIf { it > 0 }),
-                score   = Optional.present(tierToScore(entry.tier)),
-                notes   = Optional.present(entry.notes.takeIf { it.isNotBlank() }),
-            )
-            // The chained accessors Apollo Kotlin 4.x generates for the mutation
-            // response break between minor versions (flattens to Int? when
-            // `id` is the only queried field, builds a sub-class otherwise, and
-            // casefolds the property name differently depending on schema style).
-            // Bypass typed access and pull the new MediaList id out of the data
-            // class's toString() directly. Cheap, deterministic, immune to
-            // codegen churn. v0.5 will replace this with a hand-written GraphQL
-            // fragment once we settle on an Apollo Kotlin 4.x convention.
-            val response = authClient.mutation(mutation).execute()
-            if (response.hasErrors()) {
-                android.util.Log.w("AniListClient", "saveEntry GraphQL errors: ${response.errors}")
-            }
-            val raw = response.data?.toString().orEmpty()
-            Regex("\"id\"\\s*:\\s*(\\d+)").find(raw.substringAfter('{').take(2000))
-                ?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Regex("id=(\\d+)").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
-        } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "saveEntry failed", e)
-            null
-        } finally {
-            authClient.close()
-        }
+        android.util.Log.w("AniListClient", "saveEntry: stub (v0.5: OkHttp POST)")
+        return null
     }
 }
 
