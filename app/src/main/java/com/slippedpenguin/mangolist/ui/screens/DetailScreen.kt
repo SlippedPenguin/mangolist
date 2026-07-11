@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -33,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -80,19 +82,26 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 /*
- * Detail — v0.4.1 AniHyou-style hero + metadata + synopsis + characters +
+ * Detail — v0.5 AniHyou-style hero + metadata + synopsis + characters +
  * relations + tracking card.
  *
- *   - The top half is populated by a live `GetMediaDetails` GraphQL fetch
- *     triggered in `LaunchedEffect(anilistId)`; no Room columns touched.
- *   - The bottom half (episode +/−, tier picker, Sync to AniList) reads
- *     AND writes the local Room entry. If the entry doesn't exist yet
- *     (e.g. tapped straight from a search result), an "Add to Watchlist"
- *     button persists a fully-formed AnimeEntry built from MediaDetails.
- *   - Add-to-watchlist and Sync callbacks are hoisted into DetailScreen so
- *     TrackingCard stays dumb about both `details` and `app`-level state.
- *   - Sync feedback ("Synced ✓" / "Pick a tier first" / "Sign in first" /
- *     "Sync failed") auto-clears after 4s.
+ *   - Top half (hero / metadata / synopsis / characters / relations) reads
+ *     from a live `GetMediaDetails` GraphQL fetch.
+ *   - Bottom half (status, notes, tier, episode +/−, Sync) reads AND writes
+ *     the local Room entry.
+ *
+ * v0.5 adds:
+ *   - StatusPickerDialog — tap the StatusPill to switch between plan /
+ *     watching / completed / dropped / paused / repeating. Purely local;
+ *     sync (when online) pushes the same value to AniList.
+ *   - Notes editor — AlertDialog with a multi-line OutlinedTextField that
+ *     round-trips through `entry.notes`.
+ *   - Auto-complete on episode cap — when `+` would take `currentEp` to
+ *     `episodes`, the entry flips to status="completed" in the same write.
+ *   - Auto-de-promote on undo — if the user immediately `-` undoes an
+ *     auto-complete (currentEp == cap AND status == "completed"), we drop
+ *     them back to "watching" rather than leaving them stuck completed at
+ *     one less episode.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -105,11 +114,14 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     val entry by dao.observeById(anilistId).collectAsState(initial = null)
     val token by app.tokenStore.accessToken.collectAsState(initial = null)
 
-    var details        by remember { mutableStateOf<MediaDetails?>(null) }
-    var detailsLoaded  by remember { mutableStateOf(false) }
-    var showTierSheet  by remember { mutableStateOf(false) }
+    var details         by remember { mutableStateOf<MediaDetails?>(null) }
+    var detailsLoaded   by remember { mutableStateOf(false) }
+    var showTierSheet   by remember { mutableStateOf(false) }
+    var showStatusSheet by remember { mutableStateOf(false) }
+    var showNotesDialog by remember { mutableStateOf(false) }
+    var notesDraft      by remember { mutableStateOf("") }
     var synopsisExpanded by rememberSaveable { mutableStateOf(false) }
-    var syncFeedback   by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var syncFeedback    by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
     LaunchedEffect(anilistId) {
         detailsLoaded = false
@@ -117,7 +129,6 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
         detailsLoaded = true
     }
 
-    // Auto-clear the inline sync feedback toast after 4 seconds.
     LaunchedEffect(syncFeedback) {
         if (syncFeedback != null) {
             delay(4000)
@@ -125,8 +136,12 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
         }
     }
 
-    // Hoisted callbacks — TrackingCard itself doesn't reach into `details`
-    // or `app`/`token`/`scope`. Easier to test, easier to rewire later.
+    // Pre-fill the notes draft whenever the dialog opens so editing feels
+    // continuous instead of starting with empty text every time.
+    LaunchedEffect(showNotesDialog, entry) {
+        if (showNotesDialog) notesDraft = entry?.notes.orEmpty()
+    }
+
     val addToList: () -> Unit = {
         scope.launch {
             val d = details ?: return@launch
@@ -199,18 +214,19 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             }
             item {
                 TrackingCard(
-                    entry       = entry,
-                    dao         = dao,
-                    scope       = scope,
-                    onTierClick = { showTierSheet = true },
-                    onAddToList = addToList,
-                    onSync      = requestSync,
+                    entry         = entry,
+                    dao           = dao,
+                    scope         = scope,
+                    onTierClick   = { showTierSheet = true },
+                    onStatusClick = { showStatusSheet = true },
+                    onNotesClick  = { showNotesDialog = true },
+                    onAddToList   = addToList,
+                    onSync        = requestSync,
                 )
             }
             item { Spacer(Modifier.height(40.dp)) }
         }
 
-        // Floating back chip — sits over the banner instead of claiming its own row.
         IconButton(
             onClick = { navController.popBackStack() },
             modifier = Modifier
@@ -227,7 +243,6 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             )
         }
 
-        // Loading veil while the first fetch is in flight.
         if (!detailsLoaded && details == null) {
             Box(
                 modifier = Modifier
@@ -243,8 +258,6 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             }
         }
 
-        // Inline sync feedback — green for ok, accent-red for failure.
-        // Live inside the outer Box's BoxScope so .align(BottomCenter) compiles.
         syncFeedback?.let { (msg, isError) ->
             Box(
                 modifier = Modifier
@@ -274,11 +287,36 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             onDismiss = { showTierSheet = false },
         )
     }
+    if (showStatusSheet) {
+        StatusPickerDialog(
+            entry = entry,
+            dao = dao,
+            scope = scope,
+            onDismiss = { showStatusSheet = false },
+        )
+    }
+    if (showNotesDialog) {
+        NotesDialog(
+            initial = notesDraft,
+            onSave = { newText ->
+                scope.launch {
+                    val e = entry ?: return@launch
+                    dao.update(
+                        e.copy(
+                            notes = newText,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                    )
+                }
+            },
+            onDismiss = { showNotesDialog = false },
+        )
+    }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Hero — banner image with a cover overlay + bottom gradient fade    *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @Composable
 private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
     val bannerUrl = details?.bannerImage ?: entry?.cover
@@ -300,7 +338,6 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        // Bottom 1/3 fades to BgDeep so the cover overlay + title read cleanly.
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -312,7 +349,6 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
                     ),
                 ),
         )
-        // Cover overlay sits at the bottom-left of the banner (AniHyou pattern).
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -331,9 +367,9 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
     }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Title block — English large, romaji/native smaller underneath      *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @Composable
 private fun TitleBlock(details: MediaDetails?, entry: AnimeEntry?, loaded: Boolean) {
     val displayTitle = details?.titleEnglish?.takeIf { it.isNotBlank() }
@@ -365,9 +401,9 @@ private fun TitleBlock(details: MediaDetails?, entry: AnimeEntry?, loaded: Boole
     }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Metadata — k:v pills laid out with FlowRow                        *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MetadataFlowRow(details: MediaDetails?) {
@@ -383,7 +419,6 @@ private fun MetadataFlowRow(details: MediaDetails?) {
         }
         if (details.duration != null) add("Duration" to "${details.duration}m")
         if (details.averageScore != null) {
-            // Locale.US so French devices don't render "7,5" instead of "7.5".
             add("Score" to String.format(Locale.US, "%.1f", details.averageScore / 10.0))
         }
     }
@@ -423,9 +458,9 @@ private fun MetadataPill(label: String, value: String) {
     }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Genres — horizontal chip strip                                     *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @Composable
 private fun GenresRow(genres: List<String>) {
     LazyRow(
@@ -474,13 +509,11 @@ private fun StudiosRow(studios: List<String>) {
     }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Synopsis — collapse/expand on a "Read more" toggle                 *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @Composable
 private fun SynopsisBlock(text: String, expanded: Boolean, onToggle: () -> Unit) {
-    // AniList's `description(asHtml: false)` still leaks <br> + simple inline tags.
-    // HtmlCompat in COMPACT mode strips them down to plain text + linebreaks.
     val plain = remember(text) {
         HtmlCompat.fromHtml(text, HtmlCompat.FROM_HTML_MODE_COMPACT).toString().trim()
     }
@@ -512,9 +545,9 @@ private fun SynopsisBlock(text: String, expanded: Boolean, onToggle: () -> Unit)
     }
 }
 
-/* ------------------------------------------------------------------ *
+/* ------------------------------------------------------------------ *\
  *  Characters + Relations — horizontal scroll rows                   *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 @Composable
 private fun SectionTitle(text: String) {
     Text(
@@ -642,17 +675,18 @@ private fun RelationsRow(relations: List<RelationCard>) {
     }
 }
 
-/* ------------------------------------------------------------------ *
- *  Tracking card — episode +/−, tier picker, sync (or Add to list)    *
- *  Receives prepared onAddToList / onSync / onTierClick callbacks so  *
- *  it doesn't reach into outer state.                                *
- * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *\
+ *  Tracking — status + tier + notes + episode +/− + sync (or Add)     *
+ *  Receives prepared callbacks; doesn't reach into outer state.       *
+\* ------------------------------------------------------------------ */
 @Composable
 private fun TrackingCard(
     entry: AnimeEntry?,
     dao: AnimeDao,
     scope: CoroutineScope,
     onTierClick: () -> Unit,
+    onStatusClick: () -> Unit,
+    onNotesClick: () -> Unit,
     onAddToList: () -> Unit,
     onSync: () -> Unit,
 ) {
@@ -661,7 +695,6 @@ private fun TrackingCard(
         Spacer(Modifier.height(12.dp))
         val e = entry
         if (e == null) {
-            // Search hit that hasn't been added to the list yet.
             Text(
                 text = "Not in your watchlist yet.",
                 color = TextSecondary,
@@ -677,16 +710,28 @@ private fun TrackingCard(
             }
             return@Column
         }
-        // In-list path: episode +/−, tier, sync.
-        Row(verticalAlignment = Alignment.CenterVertically) {
+
+        // Status row — tap the pill to open StatusPickerDialog.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             StatusPill(status = e.status)
-            Spacer(Modifier.width(8.dp))
             Text(
                 text = "Elo ${e.elo}",
                 style = MaterialTheme.typography.bodyMedium,
                 color = tierColor(e.tier),
                 fontWeight = FontWeight.ExtraBold,
             )
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = onStatusClick) {
+                Text(
+                    text = "Change",
+                    color = Accent,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
         }
         Spacer(Modifier.height(12.dp))
         EpisodeRow(
@@ -694,25 +739,48 @@ private fun TrackingCard(
             total = e.episodes,
             onMinus = {
                 scope.launch {
-                    if (e.currentEp > 0) {
+                    if (e.currentEp <= 0) return@launch
+                    val cap = e.episodes
+                    val prev = e.currentEp - 1
+                    val now = System.currentTimeMillis()
+                    // If the user undoes an auto-complete (we're at cap AND
+                    // status is completed), drop them back to watching so
+                    // they aren't stuck "completed" with one episode left.
+                    val wasAutoCompleted =
+                        cap != null && e.status == "completed" && e.currentEp == cap
+                    if (wasAutoCompleted && prev > 0) {
                         dao.update(
                             e.copy(
-                                currentEp = e.currentEp - 1,
-                                updatedAt = System.currentTimeMillis(),
+                                currentEp = prev,
+                                status = "watching",
+                                updatedAt = now,
                             )
+                        )
+                    } else {
+                        dao.update(
+                            e.copy(currentEp = prev, updatedAt = now)
                         )
                     }
                 }
             },
             onPlus = {
                 scope.launch {
-                    val cap = e.episodes ?: Int.MAX_VALUE
-                    if (e.currentEp < cap) {
+                    val cap = e.episodes
+                    val next = e.currentEp + 1
+                    val now = System.currentTimeMillis()
+                    if (cap != null && next >= cap) {
+                        // Reaching the cap → flip to completed in the same
+                        // write so the StatusPill changes immediately.
                         dao.update(
                             e.copy(
-                                currentEp = e.currentEp + 1,
-                                updatedAt = System.currentTimeMillis(),
+                                currentEp = cap,
+                                status = "completed",
+                                updatedAt = now,
                             )
+                        )
+                    } else {
+                        dao.update(
+                            e.copy(currentEp = next, updatedAt = now)
                         )
                     }
                 }
@@ -727,6 +795,18 @@ private fun TrackingCard(
                 if (e.tier == null) "Add to tier" else "Change tier: ${e.tier}",
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onNotesClick,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            val label = when {
+                e.notes.isBlank() -> "✏️ Add notes"
+                e.notes.length <= 30 -> "✏️ ${e.notes}"
+                else -> "✏️ ${e.notes.take(30)}…"
+            }
+            Text(label, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(8.dp))
         Button(
@@ -778,6 +858,9 @@ private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: (
     }
 }
 
+/* ------------------------------------------------------------------ *\
+ *  Dialogs: tier picker (existing) + status picker + notes editor     *
+\* ------------------------------------------------------------------ */
 @Composable
 private fun TierPickerDialog(
     entry: AnimeEntry?,
@@ -835,9 +918,104 @@ private fun TierPickerDialog(
     )
 }
 
-/* ------------------------------------------------------------------ *
+/*
+ * StatusPickerDialog — anchors to the same AlertDialog shape as the tier
+ * picker for visual symmetry. Reads the live entry so the "current" badge
+ * beside the active status stays accurate through copy-edits.
+ */
+@Composable
+private fun StatusPickerDialog(
+    entry: AnimeEntry?,
+    dao: AnimeDao,
+    scope: CoroutineScope,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set status") },
+        text = {
+            Column {
+                STATUSES.forEach { status ->
+                    val isCurrent = entry?.status == status
+                    TextButton(
+                        onClick = {
+                            entry?.copy(
+                                status = status,
+                                updatedAt = System.currentTimeMillis(),
+                            )?.let { updated ->
+                                scope.launch { dao.update(updated) }
+                            }
+                            onDismiss()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            StatusPill(status = status)
+                            Spacer(Modifier.weight(1f))
+                            if (isCurrent) {
+                                Text(
+                                    text = "current",
+                                    color = TextMuted,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/*
+ * NotesDialog — single OutlinedTextField with 8 visible lines. Trims
+ * trailing whitespace on save so blank notes don't leak padding bytes
+ * into Room. The parent has hoisted `notesDraft` so edits survive
+ * re-composition while the dialog is open.
+ */
+@Composable
+private fun NotesDialog(
+    initial: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draft by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Notes (private)") },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 120.dp),
+                placeholder = { Text("Only you see these.") },
+                maxLines = 8,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(draft.trim())
+                onDismiss()
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+/* ------------------------------------------------------------------ *\
  *  Pretty-printers — AniList enums are uppercase by convention       *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 private fun prettyFormat(fmt: String?): String = when (fmt) {
     "TV"          -> "TV"
     "TV_SHORT"    -> "TV Short"
@@ -891,9 +1069,23 @@ private fun prettyRelation(rel: String): String = when (rel) {
     else          -> rel.lowercase().replaceFirstChar { it.uppercase() }
 }
 
-/* ------------------------------------------------------------------ *
+/*
+ * Status enum — six AniHyou-parity options. Stored as `String` columns,
+ * so adding a value here is a free backward-compat change (no migration).
+ * Order matters: it's the order the picker dialog walks through.
+ */
+internal val STATUSES = listOf(
+    "plan",      // Plan to watch
+    "watching",  // Currently watching
+    "completed", // Finished
+    "paused",    // On hold
+    "dropped",   // Gave up on
+    "repeating", // Rewatching
+)
+
+/* ------------------------------------------------------------------ *\
  *  Builder — convert a fetched MediaDetails into an AnimeEntry        *
- * ------------------------------------------------------------------ */
+\* ------------------------------------------------------------------ */
 internal fun buildEntryFromDetails(d: MediaDetails): AnimeEntry {
     val now = System.currentTimeMillis()
     return AnimeEntry(

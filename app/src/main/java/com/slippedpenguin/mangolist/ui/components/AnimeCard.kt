@@ -1,6 +1,8 @@
 package com.slippedpenguin.mangolist.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,10 +33,17 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
 
 /*
  * AnimeCard — the workhorse row used by the Watchlist, Tier rows, and Airing
- * schedules. Tapping the card fires `onClick`; long-press opens the
- * "tier / edit / delete" sheet (`onLongClick`). The EloBadge on the trailing
- * edge is opt-out via `showTier = false` for surfaces that don't rank yet.
+ * schedules. Tap fires `onClick`; long-press fires `onLongClick` (TiersScreen
+ * uses this to open the tier-picker sheet that feeds vs-mode). The EloBadge
+ * on the trailing edge is opt-out via `showTier = false` for surfaces that
+ * don't rank yet.
+ *
+ * v0.5: switched from `Card.onClick` to `Modifier.combinedClickable` so both
+ * gestures route through one Model 3 Card without the click-source conflict
+ * that Material3's Card API causes when both `onClick` and a long-press are
+ * needed.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AnimeCard(
     entry: AnimeEntry,
@@ -46,12 +55,15 @@ fun AnimeCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
         shape = RoundedCornerShape(12.dp),
-        onClick = onClick,
     ) {
         Row(
             modifier = Modifier

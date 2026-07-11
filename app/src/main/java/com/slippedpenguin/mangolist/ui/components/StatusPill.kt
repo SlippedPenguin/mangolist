@@ -18,9 +18,10 @@ import com.slippedpenguin.mangolist.ui.theme.TierD
 import com.slippedpenguin.mangolist.ui.theme.TierUnranked
 
 /*
- * Status pill — small labeled badge for "plan" / "watching" / "completed" / "dropped"
- * status values stored on AnimeEntry. Colors are stable across the app; matches
- * the JS prototype's `.status-pill` rule.
+ * Status pill — small labeled badge for the six list statuses AniHyou
+ * surfaces today: "plan" / "watching" / "completed" / "dropped" and the
+ * v0.5 pair "paused" / "repeating". Colors are stable across the app;
+ * matches the JS prototype's `.status-pill` rule.
  */
 @Composable
 fun StatusPill(
@@ -32,6 +33,8 @@ fun StatusPill(
         "watching"  -> "WATCHING"  to Accent
         "completed" -> "COMPLETED" to TierC
         "dropped"   -> "DROPPED"   to TierD
+        "paused"    -> "PAUSED"    to TextMuted
+        "repeating" -> "REPEATING" to Accent
         else        -> status.uppercase() to BorderStrong
     }
     Box(
