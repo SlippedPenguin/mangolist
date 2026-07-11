@@ -118,13 +118,15 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
         if (stats.statusCounts.isNotEmpty()) {
             BreakdownCard(title = "By status") {
-                val byCount = stats.statusCounts.sortedByDescending { it.second }
-                for ((status, count) in byCount) {
-                    BreakdownRow(
-                        label = status.uppercase(),
-                        count = count,
-                        color = statusColor(status),
-                    )
+                Column {
+                    val byCount = stats.statusCounts.sortedByDescending { it.second }
+                    for ((status, count) in byCount) {
+                        BreakdownRow(
+                            label = status.uppercase(),
+                            count = count,
+                            color = statusColor(status),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -132,12 +134,14 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
         if (stats.tierCounts.isNotEmpty()) {
             BreakdownCard(title = "By tier") {
-                for ((tier, count) in stats.tierCounts) {
-                    BreakdownRow(
-                        label = tier ?: "Unranked",
-                        count = count,
-                        color = tierColor(tier),
-                    )
+                Column {
+                    for ((tier, count) in stats.tierCounts) {
+                        BreakdownRow(
+                            label = tier ?: "Unranked",
+                            count = count,
+                            color = tierColor(tier),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(20.dp))
