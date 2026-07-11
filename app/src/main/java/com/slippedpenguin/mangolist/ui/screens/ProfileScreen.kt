@@ -229,7 +229,8 @@ private fun defaultDurationMinutes(format: String?): Int = when (format) {
     else          -> 24
 }
 
-private fun statusColor(status: String) = when (status) {
+@Composable
+private fun statusColor(status: String): androidx.compose.ui.graphics.Color = when (status) {
     "watching"  -> Accent
     "completed" -> MaterialTheme.colorScheme.secondary
     "dropped"   -> MaterialTheme.colorScheme.error
