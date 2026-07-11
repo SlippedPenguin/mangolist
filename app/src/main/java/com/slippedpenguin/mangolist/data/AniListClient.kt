@@ -6,7 +6,6 @@ import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
-import com.slippedpenguin.mangolist.graphql.type.MediaListStatus
 
 /*
  * AniListClient — thin wrapper over Apollo Kotlin 4.x for the AniList GraphQL
@@ -182,6 +181,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      * degrades gracefully. v0.5 replaces this with a hand-rolled OkHttp POST
      * to graphql.anilist.co so we don't fight the codegen anymore.
      */
+    @Suppress("UNUSED_PARAMETER")  // entry stays in the signature for DetailScreen caller compat
     suspend fun saveEntry(token: String, entry: AnimeEntry): Int? {
         if (token.isBlank()) return null
         android.util.Log.w("AniListClient", "saveEntry: stub (v0.5: OkHttp POST)")
@@ -189,35 +189,10 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     }
 }
 
-/*
- * Map a local "plan/watching/completed/dropped/..." status onto AniList's
- * MediaListStatus enum. Returning null leaves the field absent so AniList
- * applies its own default (CURRENT for new entries).
- */
-private fun toMediaListStatus(local: String): MediaListStatus? = when (local) {
-    "plan"      -> MediaListStatus.PLANNING
-    "watching"  -> MediaListStatus.CURRENT
-    "completed" -> MediaListStatus.COMPLETED
-    "dropped"   -> MediaListStatus.DROPPED
-    "paused"    -> MediaListStatus.PAUSED
-    "repeating" -> MediaListStatus.REPEATING
-    else        -> null
-}
-
-/*
- * Tier → 10-point AniList score mapping. The local tierlist S/A/B/C/D is a
- * rough equivalent of AniList's 1-10 decimal score; we pick the midpoint of
- * each tier so the AniList import lands somewhere sensible. A v0.5
- * improvement: let the user fine-tune the score independently from tier.
- */
-private fun tierToScore(tier: String?): Double? = when (tier) {
-    "S" -> 9.0
-    "A" -> 7.5
-    "B" -> 6.0
-    "C" -> 4.5
-    "D" -> 3.0
-    else -> null
-}
+// Helpers `toMediaListStatus` + `tierToScore` and `MediaListStatus` import were
+// removed in v0.4.4 since the stubbed saveEntry no longer maps local status /
+// tier to AniList's enums. They come back in v0.5 when saveEntry is rebuilt
+// against the manual OkHttp POST.
 
 /*
  * Rich-detail view of one anime, fetched by AniListClient.getMediaDetails.
