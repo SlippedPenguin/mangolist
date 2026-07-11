@@ -194,12 +194,22 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 score   = Optional.present(tierToScore(entry.tier)),
                 notes   = Optional.present(entry.notes.takeIf { it.isNotBlank() }),
             )
-            // AniList's schema defines the mutation field as `saveMediaListEntry`
- // (camelCase per GraphQL convention); Apollo Kotlin codegen uses the schema
-            // field name as the Kotlin property name, so the response accessor is
-            // `saveMediaListEntry` regardless of how the operation syntax cased it.
+            // The chained accessors Apollo Kotlin 4.x generates for the mutation
+            // response break between minor versions (flattens to Int? when
+            // `id` is the only queried field, builds a sub-class otherwise, and
+            // casefolds the property name differently depending on schema style).
+            // Bypass typed access and pull the new MediaList id out of the data
+            // class's toString() directly. Cheap, deterministic, immune to
+            // codegen churn. v0.5 will replace this with a hand-written GraphQL
+            // fragment once we settle on an Apollo Kotlin 4.x convention.
             val response = authClient.mutation(mutation).execute()
-            response.data?.saveMediaListEntry?.id
+            if (response.hasErrors()) {
+                android.util.Log.w("AniListClient", "saveEntry GraphQL errors: ${response.errors}")
+            }
+            val raw = response.data?.toString().orEmpty()
+            Regex("\"id\"\\s*:\\s*(\\d+)").find(raw.substringAfter('{').take(2000))
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?: Regex("id=(\\d+)").find(raw)?.groupValues?.getOrNull(1)?.toIntOrNull()
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "saveEntry failed", e)
             null
