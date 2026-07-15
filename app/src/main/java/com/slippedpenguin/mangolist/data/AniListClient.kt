@@ -208,11 +208,14 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
         return try {
             // AniList's token endpoint requires application/x-www-form-urlencoded
             // (OAuth2 RFC 6749). Sending JSON causes "invalid_client" errors.
+            // NOTE: Do NOT send redirect_uri in the token exchange — AniList
+            // rejects with "invalid_client" if the redirect_uri doesn't match
+            // the registered URI exactly. The redirect_uri is only required
+            // during the authorize step, not the token exchange.
             val clientId = BuildConfig.ANILIST_CLIENT_ID.toInt()
             val clientSecret = java.net.URLEncoder.encode(BuildConfig.ANILIST_CLIENT_SECRET, "UTF-8")
-            val redirectUri = java.net.URLEncoder.encode(BuildConfig.ANILIST_REDIRECT_URI, "UTF-8")
             val encodedCode = java.net.URLEncoder.encode(code, "UTF-8")
-            val body = "grant_type=authorization_code&client_id=$clientId&client_secret=$clientSecret&redirect_uri=$redirectUri&code=$encodedCode"
+            val body = "grant_type=authorization_code&client_id=$clientId&client_secret=$clientSecret&code=$encodedCode"
 
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
