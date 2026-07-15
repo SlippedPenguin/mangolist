@@ -49,7 +49,7 @@ jobs:
       # into the source repo.
       - name: Configure AniList OAuth secrets
         run: |
-          cat >> local.properties <<EOF
+          cat > local.properties <<EOF
           anilist.client.id=45540
           anilist.client.secret=${{ secrets.ANILIST_CLIENT_SECRET }}
           anilist.redirect.uri=com.slippedpenguin.mangolist://callback

@@ -208,7 +208,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
         return try {
             val payload = buildJsonObject {
                 put("grant_type", "authorization_code")
-                put("client_id", BuildConfig.ANILIST_CLIENT_ID)
+                put("client_id", BuildConfig.ANILIST_CLIENT_ID.toInt())
                 put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
                 put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
                 put("code", code)
