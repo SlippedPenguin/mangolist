@@ -43,6 +43,18 @@ jobs:
           # Built-in caching keyed off gradle files + wrapper props.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
+      # Write AniList OAuth secrets to local.properties so build.gradle.kts
+      # picks them up as BuildConfig fields. Client ID is public; client
+      # secret comes from the GitHub Actions secret store so it never leaks
+      # into the source repo.
+      - name: Configure AniList OAuth secrets
+        run: |
+          cat >> local.properties <<EOF
+          anilist.client.id=45540
+          anilist.client.secret=${{ secrets.ANILIST_CLIENT_SECRET }}
+          anilist.redirect.uri=com.slippedpenguin.mangolist://callback
+          EOF
+
       # Pull the live AniList GraphQL schema before assembly. The
       # `downloadAnilistApolloSchemaFromIntrospection` task writes to the path
       # configured by the apollo{} block in app/build.gradle.kts. We always
