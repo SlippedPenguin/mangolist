@@ -429,7 +429,14 @@ private fun prettyFormat(fmt: String?): String = when (fmt) {
 }
 
 /*
- * Builds the AniList OAuth implicit-flow authorize URL.
+ * Builds the AniList OAuth authorization-code-flow authorize URL.
+ *
+ * v0.6.2: switched from implicit (response_type=token) to authorization code
+ * (response_type=code). AniList clients registered as "Authorization Code Grant"
+ * reject implicit requests with "authorization grant type is not supported".
+ * After the user authorizes, AniList redirects back with ?code=... —
+ * MainActivity.handleAuthRedirect exchanges that code for an access_token
+ * at /api/v2/oauth/token.
  */
 private fun buildAniListAuthorizeUrl(): String {
     val clientId    = BuildConfig.ANILIST_CLIENT_ID
@@ -437,7 +444,7 @@ private fun buildAniListAuthorizeUrl(): String {
     return buildString {
         append("https://anilist.co/api/v2/oauth/authorize")
         append("?client_id=").append(Uri.encode(clientId))
-        append("&response_type=token")
+        append("&response_type=code")
         append("&redirect_uri=").append(Uri.encode(redirectUri))
     }
 }

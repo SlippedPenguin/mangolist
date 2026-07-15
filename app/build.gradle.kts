@@ -5,6 +5,7 @@ import java.util.Properties
  * AniList OAuth credentials are read from `local.properties` (gitignored) so
  * secrets never leak. Add to your local.properties:
  *   anilist.client.id=<your-client-id-from-anilist-co-api-v2-oauth>
+ *   anilist.client.secret=<your-client-secret>
  *   anilist.redirect.uri=com.slippedpenguin.mangolist://callback
  *
  * If unset, the build still succeeds — the URLs it generates just won't work
@@ -47,6 +48,11 @@ android {
             "String",
             "ANILIST_CLIENT_ID",
             "\"${anilistLocalProps.getProperty("anilist.client.id", "").trim().trim('"')}\"",
+        )
+        buildConfigField(
+            "String",
+            "ANILIST_CLIENT_SECRET",
+            "\"${anilistLocalProps.getProperty("anilist.client.secret", "").trim().trim('"')}\"",
         )
         buildConfigField(
             "String",

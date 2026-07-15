@@ -22,11 +22,9 @@ import kotlinx.coroutines.launch
  * status/nav bars draw over the app surface so the bottom NavigationBar
  * matches the JS prototype's "floats over content" feel.
  *
- * Also handles the AniList OAuth redirect: after the user authorises in
- * Chrome Custom Tab, the browser hops back into the app via
- *   com.slippedpenguin.mangolist://callback#access_token=...
- * The token lives in the URL fragment, which Android's Uri API doesn't
- * surface through getQueryParameter — we split on `&` / `=` manually.
+ * v0.6.2: Switched from implicit OAuth to authorization code grant.
+ * AniList redirects back with ?code=... instead of #access_token=...
+ * The code is exchanged for an access_token via POST to /api/v2/oauth/token.
  */
 class MainActivity : ComponentActivity() {
 
@@ -63,11 +61,10 @@ class MainActivity : ComponentActivity() {
     }
 
     /*
-     * Anchors on ANILIST_REDIRECT_URI from BuildConfig so the build-time
-     * configuration is the single source of truth for the deep-link target.
-     * Currently parses the access_token off the URL fragment and saves it
-     * with placeholder userId=0 / userName=null — Commit D's GetViewer call
-     * backfills both from the token.
+     * v0.6.2: Parses ?code= from the redirect URI, then exchanges it for
+     * an access_token via AniListClient.exchangeCodeForToken(). Falls back
+     * to the old fragment parser in case the user's AniList client is
+     * somehow still using implicit grant.
      */
     private fun handleAuthRedirect(intent: Intent?) {
         val data: Uri = intent?.data ?: return
@@ -75,13 +72,27 @@ class MainActivity : ComponentActivity() {
         val expectedScheme = expectedUri.substringBefore("://")
         val expectedHost   = expectedUri.substringAfter("://").substringBefore("/")
         if (data.scheme != expectedScheme || data.host != expectedHost) return
-        val token = parseAccessToken(data) ?: return
+
         val app = applicationContext as AnimeApp
+
+        // Authorization code grant (v0.6.2): AniList sends ?code=…
+        val code = data.getQueryParameter("code")
+        if (!code.isNullOrBlank()) {
+            ioScope.launch {
+                val token = app.anilistClient.exchangeCodeForToken(code)
+                if (token != null) {
+                    val viewer = app.anilistClient.getViewer(token)
+                    val userId   = viewer?.id ?: 0
+                    val userName = viewer?.name
+                    app.tokenStore.saveToken(token, userId = userId, userName = userName)
+                }
+            }
+            return
+        }
+
+        // Fallback: implicit grant (response_type=token) — token in URL fragment.
+        val token = parseAccessToken(data) ?: return
         ioScope.launch {
-            // Backfill viewer info via GetViewer. May fail (bad token, network
-            // drop) — fall back to placeholder userId=0 so the token still
-            // saves either way. Profile header will then populate on the next
-            // collectAsState when this completes.
             val viewer = app.anilistClient.getViewer(token)
             val userId   = viewer?.id ?: 0
             val userName = viewer?.name

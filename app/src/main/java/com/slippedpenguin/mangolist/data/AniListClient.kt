@@ -2,6 +2,7 @@ package com.slippedpenguin.mangolist.data
 
 import android.content.Context
 import com.apollographql.apollo.ApolloClient
+import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
@@ -193,6 +194,45 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             characters    = characters,
             relations     = relations,
         )
+    }
+
+    /**
+     * Exchange an authorization code for an access token (OAuth2 authorization
+     * code grant). POSTs to https://anilist.co/api/v2/oauth/token with the
+     * client_id, client_secret, code, and grant_type.
+     *
+     * Returns the access_token string on success, null on failure.
+     */
+    suspend fun exchangeCodeForToken(code: String): String? {
+        if (code.isBlank()) return null
+        return try {
+            val payload = buildJsonObject {
+                put("grant_type", "authorization_code")
+                put("client_id", BuildConfig.ANILIST_CLIENT_ID)
+                put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
+                put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
+                put("code", code)
+            }
+            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            val body = json.encodeToString(JsonObject.serializer(), payload)
+
+            val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toByteArray()) }
+
+            if (conn.responseCode !in 200..299) {
+                android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}")
+                return null
+            }
+            val responseBody = conn.inputStream.bufferedReader().readText()
+            val root = json.parseToJsonElement(responseBody).jsonObject
+            root["access_token"]?.jsonPrimitive?.content
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "exchangeCodeForToken failed", e)
+            null
+        }
     }
 
     /**

@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MangoList v0.6.0 — Visual Preview</title>
+<style>
+:root {
+  --bg-deep:       #0a0a14;
+  --bg-card:       #14141f;
+  --bg-card-hover: #1c1c2e;
+  --bg-input:      #15151f;
+  --border:        #25253a;
+  --border-strong: #353550;
+  --text-primary:  #e8e8f0;
+  --text-secondary:#8a8aa3;
+  --text-muted:    #5a5a73;
+  --accent:        #ff3366;
+  --accent-hover:  #ff4577;
+  --tier-s: #ff4d6d; --tier-a: #ff8a3d; --tier-b: #ffce4d;
+  --tier-c: #6dd66d; --tier-d: #5dc4d6; --tier-u: #3a3a4e;
+  --status-plan:      #6b6b80;
+  --status-watching:  #ff3366;
+  --status-completed: #6dd66d;
+  --status-dropped:   #e74c3c;
+  --status-paused:    #f0a040;
+  --status-repeating: #9b59b6;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+}
+/* Sidebar tabs */
+nav {
+  width: 200px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  padding: 20px 0;
+  display: flex; flex-direction: column;
+  position: fixed; top:0; left:0; bottom:0;
+  z-index: 10;
+}
+nav h2 {
+  color: var(--accent);
+  font-size: 18px; font-weight: 800;
+  padding: 0 20px 16px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+}
+nav button {
+  display: block; width: 100%;
+  padding: 12px 20px; border: none;
+  background: transparent; color: var(--text-secondary);
+  text-align: left; font-size: 14px; cursor: pointer;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+}
+nav button:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+nav button.active {
+  background: var(--bg-card-hover); color: var(--accent);
+  border-left-color: var(--accent); font-weight: 700;
+}
+
+/* Main content */
+main {
+  margin-left: 200px;
+  flex: 1; padding: 24px;
+  max-width: 800px;
+}
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Cards & shared styles */
+.card {
+  background: var(--bg-card);
+  border-radius: 16px; padding: 20px;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-size: 11px; text-transform: uppercase;
+  letter-spacing: 2px; color: var(--text-secondary);
+  margin-bottom: 8px; font-weight: 700;
+}
+.row { display: flex; align-items: center; gap: 12px; }
+.col { display: flex; flex-direction: column; }
+.gap8 { gap: 8px; }
+.gap16 { gap: 16px; }
+.mt16 { margin-top: 16px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.pill {
+  display: inline-block; padding: 2px 8px;
+  border-radius: 4px; font-size: 11px; font-weight: 800;
+}
+.stat-row {
+  display: flex; justify-content: space-between;
+  align-items: center; padding: 4px 0;
+}
+.stat-label { color: var(--text-secondary); font-size: 13px; }
+.stat-value { font-size: 18px; font-weight: 700; }
+.stat-hint { font-size: 11px; color: var(--text-muted); }
+
+/* Breakdown rows */
+.breakdown-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0;
+}
+.breakdown-dot {
+  width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
+}
+.breakdown-label { flex:1; font-size: 14px; }
+.breakdown-count { font-weight: 800; font-size: 14px; }
+
+/* Star rating */
+.stars { display: flex; gap: 2px; justify-content: center; }
+.star-btn {
+  background: none; border: none; font-size: 24px;
+  cursor: pointer; padding: 4px 6px; transition: 0.15s;
+}
+.star-btn:hover { transform: scale(1.2); }
+
+/* Air schedule */
+.air-day { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin: 16px 0 6px 4px; }
+.air-card {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--bg-card); border-radius: 12px;
+  padding: 12px; margin-bottom: 6px;
+  cursor: pointer; transition: background 0.15s;
+}
+.air-card:hover { background: var(--bg-card-hover); }
+.air-cover {
+  width: 48px; height: 68px; border-radius: 8px;
+  background: var(--border); display: flex; align-items: center;
+  justify-content: center; font-size: 20px; color: var(--text-muted);
+  flex-shrink: 0;
+}
+.air-info { flex:1; }
+.air-title { font-weight: 700; font-size: 14px; }
+.air-ep   { color: var(--text-secondary); font-size: 12px; }
+.air-cd   { color: var(--accent); font-weight: 700; font-size: 13px; text-align: right; }
+.air-time { color: var(--text-muted); font-size: 11px; text-align: right; }
+
+/* Top bar */
+.top-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 24px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.top-bar h1 { font-size: 20px; font-weight: 700; }
+.top-bar .version {
+  font-size: 12px; color: var(--accent);
+  background: var(--accent); color: white;
+  padding: 2px 10px; border-radius: 12px; font-weight: 700;
+}
+
+/* Avatar */
+.avatar {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--border); display: flex; align-items: center;
+  justify-content: center; font-size: 28px; color: var(--text-muted);
+  margin: 0 auto 10px;
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 20px; border: none; border-radius: 8px;
+  font-weight: 700; font-size: 14px; cursor: pointer;
+  transition: 0.2s; width: 100%;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-outline {
+  background: transparent; color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+}
+.btn-outline:hover { background: var(--bg-card-hover); }
+
+/* Color swatches */
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.swatch {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 8px;
+  background: var(--bg-input); font-size: 12px;
+}
+.swatch-dot { width: 14px; height: 14px; border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 700px) {
+  nav { width: 140px; }
+  main { margin-left: 140px; padding: 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <h2>🍋 MangoList</h2>
+  <button class="active" onclick="showPanel('profile')">👤 Profile</button>
+  <button onclick="showPanel('detail')">📺 Detail</button>
+  <button onclick="showPanel('airing')">📅 Airing</button>
+  <button onclick="showPanel('tiers')">🏆 Tiers</button>
+  <button onclick="showPanel('colors')">🎨 Colors</button>
+  <button onclick="showPanel('changelog')">📋 Changelog</button>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+<!-- ==================== PROFILE ==================== -->
+<div id="panel-profile" class="panel active">
+  <div class="top-bar">
+    <h1>👤 Profile</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <!-- Avatar + greeting -->
+  <div class="avatar">😺</div>
+  <div style="text-align:center; margin-bottom:20px">
+    <div style="font-size:20px;font-weight:700">Hi, CuBac</div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-top:4px">42 anime in your local list</div>
+  </div>
+
+  <!-- Core stats card -->
+  <div class="card">
+    <div class="section-title">Overview</div>
+    <div class="col gap16">
+      <div class="stat-row">
+        <div class="col"><span class="stat-label">Episodes watched</span></div>
+        <span class="stat-value">847</span>
+      </div>
+      <div class="stat-row">
+        <div class="col">
+          <span class="stat-label">Days watched</span>
+          <span class="stat-hint">NEW — based on format-aware duration estimates</span>
+        </div>
+        <span class="stat-value">12.3</span>
+      </div>
+      <div class="stat-row">
+        <div class="col">
+          <span class="stat-label">Community mean score</span>
+          <span class="stat-hint">AniList community avg</span>
+        </div>
+        <span class="stat-value">7.8</span>
+      </div>
+      <div class="stat-row">
+        <div class="col">
+          <span class="stat-label">Your mean score</span>
+          <span class="stat-hint">NEW — your personal avg</span>
+        </div>
+        <span class="stat-value" style="color:var(--accent)">8.4</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status breakdown -->
+  <div class="card">
+    <div class="section-title">By status</div>
+    <div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">WATCHING</span><span class="breakdown-count" style="color:var(--status-watching)">18</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-completed)"></div><span class="breakdown-label">COMPLETED</span><span class="breakdown-count" style="color:var(--status-completed)">14</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-plan)"></div><span class="breakdown-label">PLAN</span><span class="breakdown-count" style="color:var(--status-plan)">5</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">DROPPED</span><span class="breakdown-count" style="color:var(--status-dropped)">3</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-paused)"></div><span class="breakdown-label">PAUSED</span><span class="breakdown-count" style="color:var(--status-paused)">2</span></div>
+    </div>
+    <div style="margin-top:8px;padding:6px 10px;background:var(--bg-input);border-radius:6px;font-size:12px;color:var(--text-muted)">
+      🐛 FIXED: <span style="color:var(--status-dropped)">dropped</span> was same color as <span style="color:var(--status-watching)">watching</span> — now distinct crimson vs rose
+    </div>
+  </div>
+
+  <!-- Tier breakdown -->
+  <div class="card">
+    <div class="section-title">By tier</div>
+    <div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-s)"></div><span class="breakdown-label">S</span><span class="breakdown-count" style="color:var(--tier-s)">4</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-a)"></div><span class="breakdown-label">A</span><span class="breakdown-count" style="color:var(--tier-a)">8</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-b)"></div><span class="breakdown-label">B</span><span class="breakdown-count" style="color:var(--tier-b)">12</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-c)"></div><span class="breakdown-label">C</span><span class="breakdown-count" style="color:var(--tier-c)">10</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-d)"></div><span class="breakdown-label">D</span><span class="breakdown-count" style="color:var(--tier-d)">5</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--tier-u)"></div><span class="breakdown-label">Unranked</span><span class="breakdown-count" style="color:var(--tier-u)">3</span></div>
+    </div>
+  </div>
+
+  <!-- Genre distribution NEW -->
+  <div class="card">
+    <div class="section-title">Top genres <span style="color:var(--accent);font-size:11px">NEW</span></div>
+    <div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Action</span><span class="breakdown-count" style="color:var(--status-watching)">24</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Fantasy</span><span class="breakdown-count" style="color:var(--status-watching)">19</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Adventure</span><span class="breakdown-count" style="color:var(--status-watching)">17</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Comedy</span><span class="breakdown-count" style="color:var(--status-watching)">15</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Drama</span><span class="breakdown-count" style="color:var(--status-watching)">13</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Sci-Fi</span><span class="breakdown-count" style="color:var(--status-watching)">10</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Romance</span><span class="breakdown-count" style="color:var(--status-watching)">9</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-watching)"></div><span class="breakdown-label">Slice of Life</span><span class="breakdown-count" style="color:var(--status-watching)">8</span></div>
+    </div>
+  </div>
+
+  <!-- Format distribution NEW -->
+  <div class="card">
+    <div class="section-title">By format <span style="color:var(--accent);font-size:11px">NEW</span></div>
+    <div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-plan)"></div><span class="breakdown-label">TV</span><span class="breakdown-count" style="color:var(--status-plan)">28</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-plan)"></div><span class="breakdown-label">Movie</span><span class="breakdown-count" style="color:var(--status-plan)">8</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-plan)"></div><span class="breakdown-label">OVA</span><span class="breakdown-count" style="color:var(--status-plan)">4</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-plan)"></div><span class="breakdown-label">TV Short</span><span class="breakdown-count" style="color:var(--status-plan)">2</span></div>
+    </div>
+  </div>
+
+  <!-- Year distribution NEW -->
+  <div class="card">
+    <div class="section-title">By year <span style="color:var(--accent);font-size:11px">NEW</span></div>
+    <div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2024</span><span class="breakdown-count" style="color:var(--status-dropped)">12</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2023</span><span class="breakdown-count" style="color:var(--status-dropped)">10</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2022</span><span class="breakdown-count" style="color:var(--status-dropped)">7</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2021</span><span class="breakdown-count" style="color:var(--status-dropped)">5</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2020</span><span class="breakdown-count" style="color:var(--status-dropped)">4</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2019</span><span class="breakdown-count" style="color:var(--status-dropped)">3</span></div>
+      <div class="breakdown-row"><div class="breakdown-dot" style="background:var(--status-dropped)"></div><span class="breakdown-label">2018</span><span class="breakdown-count" style="color:var(--status-dropped)">1</span></div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" style="margin-top:8px">Log in with AniList</button>
+</div>
+
+<!-- ==================== DETAIL / SCORE PICKER ==================== -->
+<div id="panel-detail" class="panel">
+  <div class="top-bar">
+    <h1>📺 Detail — Score Picker</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Tracking</div>
+    <div class="row" style="margin-bottom:12px">
+      <span class="pill" style="background:var(--status-watching);color:white;opacity:0.85">WATCHING</span>
+      <span style="font-weight:800;color:var(--tier-a)">Elo 1580</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--accent);cursor:pointer">Change</span>
+    </div>
+
+    <!-- Ep row -->
+    <div style="background:var(--bg-input);border-radius:12px;padding:8px 14px;display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <button style="background:none;border:none;color:var(--text-primary);font-size:22px;cursor:pointer">−</button>
+      <span style="flex:1;text-align:center;font-size:18px;font-weight:700">7 / 12</span>
+      <button style="background:none;border:none;color:var(--text-primary);font-size:22px;cursor:pointer">+</button>
+    </div>
+
+    <button class="btn btn-outline" style="margin-bottom:8px">Change tier: A</button>
+
+    <!-- Score row NEW -->
+    <div style="margin:12px 0;padding:12px;background:var(--bg-input);border-radius:10px">
+      <div class="section-title" style="margin-bottom:8px">⭐ Your rating <span style="color:var(--accent);font-size:11px">NEW</span></div>
+      <div style="text-align:center;font-size:32px;color:var(--accent);font-weight:800;margin-bottom:8px">
+        ★ 8.5 <span style="font-size:16px;color:var(--text-secondary);font-weight:400">/ 10.0</span>
+      </div>
+      <div class="stars">
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--accent);font-size:22px">★</span>
+        <span style="color:var(--text-muted);font-size:22px">☆</span>
+        <span style="color:var(--text-muted);font-size:22px">☆</span>
+      </div>
+      <div style="display:flex;gap:4px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 10</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 9</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 8</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 7</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 6</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 5</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 4</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 3</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 2</button>
+        <button class="badge" style="background:var(--accent);color:white;font-weight:700;cursor:pointer;border:none">★ 1</button>
+      </div>
+      <button class="btn btn-outline" style="margin-top:8px">Clear rating</button>
+    </div>
+
+    <button class="btn btn-outline" style="margin-bottom:8px">✏️ Notes...</button>
+    <button class="btn btn-primary">Sync to AniList</button>
+
+    <div style="margin-top:8px;padding:6px 10px;background:var(--bg-input);border-radius:6px;font-size:12px;color:var(--text-muted)">
+      🔄 <span style="color:var(--status-completed)">NEW:</span> Sync now actually pushes to AniList via real HTTP POST (was stubbed before)
+    </div>
+  </div>
+</div>
+
+<!-- ==================== AIRING ==================== -->
+<div id="panel-airing" class="panel">
+  <div class="top-bar">
+    <h1>📅 Airing This Week</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <div style="margin-bottom:12px;font-size:12px;color:var(--text-muted)">
+    🔄 <span style="color:var(--status-completed)">NEW:</span> Live 7-day schedule from AniList — was a placeholder before
+  </div>
+
+  <!-- Today -->
+  <div class="air-day">Today</div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">Solo Leveling S2</div>
+      <div class="air-ep">Ep 15</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">Airing now</div>
+      <div class="air-time">11:00 AM</div>
+    </div>
+  </div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">Frieren S2</div>
+      <div class="air-ep">Ep 6</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">in 3h 45m</div>
+      <div class="air-time">3:30 PM</div>
+    </div>
+  </div>
+
+  <!-- Tomorrow -->
+  <div class="air-day">Tomorrow</div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">One Piece</div>
+      <div class="air-ep">Ep 1124</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">in 1d 2h</div>
+      <div class="air-time">10:00 AM</div>
+    </div>
+  </div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">Dandadan S2</div>
+      <div class="air-ep">Ep 3</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">in 1d 8h</div>
+      <div class="air-time">4:30 PM</div>
+    </div>
+  </div>
+
+  <!-- Wed -->
+  <div class="air-day">Wed, Jul 16</div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">Jujutsu Kaisen S3</div>
+      <div class="air-ep">Ep 2</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">in 2d 5h</div>
+      <div class="air-time">1:00 PM</div>
+    </div>
+  </div>
+
+  <!-- Thu -->
+  <div class="air-day">Thu, Jul 17</div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info">
+      <div class="air-title">Chainsaw Man S2</div>
+      <div class="air-ep">Ep 8</div>
+    </div>
+    <div class="col" style="align-items:flex-end">
+      <div class="air-cd">in 3d 1h</div>
+      <div class="air-time">9:00 AM</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== TIERS ==================== -->
+<div id="panel-tiers" class="panel">
+  <div class="top-bar">
+    <h1>🏆 Tier List</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <!-- S tier -->
+  <div class="row" style="margin:12px 0 4px">
+    <div style="width:4px;height:24px;border-radius:2px;background:var(--tier-s)"></div>
+    <span class="badge" style="background:var(--tier-s);color:white;opacity:0.9">S</span>
+    <span class="badge" style="background:var(--border)">4</span>
+    <span style="font-size:12px;color:var(--text-secondary)">1750-1950 Elo · long-press to rank</span>
+  </div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info"><div class="air-title">Attack on Titan</div></div>
+    <div class="badge" style="background:var(--tier-s);color:white;opacity:0.85;flex-direction:column;align-items:center">
+      <span style="font-weight:800">S</span><span style="font-size:10px">1950</span>
+    </div>
+  </div>
+
+  <!-- A tier -->
+  <div class="row" style="margin:12px 0 4px">
+    <div style="width:4px;height:24px;border-radius:2px;background:var(--tier-a)"></div>
+    <span class="badge" style="background:var(--tier-a);color:white;opacity:0.9">A</span>
+    <span class="badge" style="background:var(--border)">8</span>
+    <span style="font-size:12px;color:var(--text-secondary)">1550-1700 Elo · long-press to rank</span>
+  </div>
+  <div class="air-card">
+    <div class="air-cover">🎬</div>
+    <div class="air-info"><div class="air-title">Frieren</div></div>
+    <div class="badge" style="background:var(--tier-a);color:white;opacity:0.85;flex-direction:column;align-items:center">
+      <span style="font-weight:800">A</span><span style="font-size:10px">1680</span>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== COLORS ==================== -->
+<div id="panel-colors" class="panel">
+  <div class="top-bar">
+    <h1>🎨 Color Palette</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <div class="card">
+    <div class="section-title">NEW: Status Colors</div>
+    <div style="margin-top:8px;padding:6px 10px;background:var(--bg-input);border-radius:6px;font-size:12px;color:var(--text-muted);margin-bottom:12px">
+      🐛 v0.5 had <span style="color:var(--status-watching)">watching</span> and <span style="color:var(--status-dropped)">dropped</span> both as the same color. Now each status has its own distinct color.
+    </div>
+    <div class="swatches">
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-watching)"></div>Watching</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-completed)"></div>Completed</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-plan)"></div>Plan</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-dropped)"></div>Dropped</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-paused)"></div>Paused</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--status-repeating)"></div>Repeating</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Tier Colors</div>
+    <div class="swatches">
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-s)"></div>S</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-a)"></div>A</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-b)"></div>B</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-c)"></div>C</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-d)"></div>D</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--tier-u)"></div>Unranked</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Theme Colors</div>
+    <div class="swatches">
+      <div class="swatch"><div class="swatch-dot" style="background:var(--bg-deep)"></div>BgDeep</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--bg-card);border:1px solid var(--border-strong)"></div>BgCard</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--accent)"></div>Accent</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--text-primary)"></div>TextPrimary</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--text-secondary)"></div>TextSecondary</div>
+      <div class="swatch"><div class="swatch-dot" style="background:var(--text-muted)"></div>TextMuted</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== CHANGELOG ==================== -->
+<div id="panel-changelog" class="panel">
+  <div class="top-bar">
+    <h1>📋 v0.6.0 Changelog</h1>
+    <span class="version">v0.6.0</span>
+  </div>
+
+  <div class="card">
+    <div class="section-title">New Features</div>
+    <div class="col gap8 mt16">
+      <div style="font-weight:700;color:var(--status-completed)">✅ Personal Scores</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Star rating (1-10) per anime. Stored in Room, synced to AniList. ScorePickerDialog with tappable stars.</div>
+
+      <div style="font-weight:700;color:var(--status-completed)">✅ Real AniList Sync</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Replaced stubbed saveEntry with live HTTP POST using kotlinx.serialization + HttpURLConnection. Maps status→MediaListStatus, pushes scores & progress.</div>
+
+      <div style="font-weight:700;color:var(--status-completed)">✅ Airing Screen</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Full rewrite — fetches 7-day schedule from AniList, grouped by day with live countdown timers, tappable cards.</div>
+
+      <div style="font-weight:700;color:var(--status-completed)">✅ Enhanced Profile</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Added: days watched, personal mean score, genre distribution (top 8), format breakdown, year distribution.</div>
+
+      <div style="font-weight:700;color:var(--status-completed)">✅ Tappable Relations</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Related anime cards in DetailScreen now navigate to their detail pages.</div>
+
+      <div style="font-weight:700;color:var(--status-completed)">✅ Viewer Expansion</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">AnimeViewer now carries avatar URLs + AniList statistics from GetViewer.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Bug Fixes</div>
+    <div class="col gap8 mt16">
+      <div style="font-weight:700;color:var(--status-dropped)">🐛 Fixed: statusColor collision</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">"dropped" and "watching" both showed as Accent (pink). Now dropped=crimson, watching=rose, paused=amber, repeating=purple. Centralized all status colors in Color.kt.</div>
+
+      <div style="font-weight:700;color:var(--status-dropped)">🐛 Fixed: low-contrast paused pill</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">PAUSED pill was dark gray TextMuted → now warm amber (0xFFf0a040).</div>
+
+      <div style="font-weight:700;color:var(--status-dropped)">🐛 Fixed: personalScore compile error</div>
+      <div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Missing default value broke all .copy() calls. Added = null default.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Architecture Changes</div>
+    <div class="col gap8 mt16">
+      <div>• AnimeEntry: new <code>personalScore: Int? = null</code> field</div>
+      <div>• AnimeDatabase: migrated to v2 with fallbackToDestructiveMigration</div>
+      <div>• AniListClient.saveEntry: real HTTP POST replaces Apollo codegen stub</div>
+      <div>• AniListClient.getAiringSchedule: new method for airing data</div>
+      <div>• Color.kt: added 6 status colors + centralized statusColor() function</div>
+      <div>• AnimeViewer: expanded with avatar + statistics fields</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-top:4px">11 files changed across the codebase</div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => {
+    if (b.textContent.toLowerCase().includes(name) || (name==='profile' && b.textContent.includes('Profile'))) {
+      b.classList.add('active');
+    }
+  });
+  // Match the right button
+  const buttons = document.querySelectorAll('nav button');
+  buttons.forEach(b => b.classList.remove('active'));
+  const idx = ['profile','detail','airing','tiers','colors','changelog'].indexOf(name);
+  if (idx >= 0) buttons[idx].classList.add('active');
+}
+</script>
+
+</body>
+</html>
