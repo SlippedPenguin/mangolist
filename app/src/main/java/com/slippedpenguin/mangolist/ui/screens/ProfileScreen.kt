@@ -290,7 +290,7 @@ private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
 
     // Split comma-separated genres and count individually.
     val genreCounts = entries
-        .flatMap { it.genres.split(",").map { g -> g.trim() }.filter { g.isNotBlank() } }
+        .flatMap { it.genres.split(",").map { g -> g.trim() }.filter { it.isNotBlank() } }
         .groupingBy { it }.eachCount()
         .entries.sortedByDescending { it.value }
         .map { it.key to it.value }

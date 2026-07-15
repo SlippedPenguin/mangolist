@@ -1064,10 +1064,11 @@ private fun ScorePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rate this anime") },
         text = {
+            val sel = selected
             Column {
                 Text(
-                    text = if (selected != null)
-                        String.format(Locale.US, "★ %.1f / 10.0", selected / 10.0)
+                    text = if (sel != null)
+                        String.format(Locale.US, "★ %.1f / 10.0", sel / 10.0)
                     else "No rating",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
@@ -1082,7 +1083,7 @@ private fun ScorePickerDialog(
                     // Quick-set buttons: 1-10
                     (1..10).forEach { star ->
                         val scoreVal = star * 10
-                        val filled = selected != null && selected >= scoreVal
+                        val filled = sel != null && sel >= scoreVal
                         TextButton(
                             onClick = {
                                 selected = if (selected == scoreVal) null else scoreVal
