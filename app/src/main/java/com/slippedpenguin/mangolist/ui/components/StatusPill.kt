@@ -11,12 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BorderStrong
-import com.slippedpenguin.mangolist.ui.theme.TextMuted
-import com.slippedpenguin.mangolist.ui.theme.TierC
-import com.slippedpenguin.mangolist.ui.theme.TierD
-import com.slippedpenguin.mangolist.ui.theme.TierUnranked
+import com.slippedpenguin.mangolist.ui.theme.StatusCompleted
+import com.slippedpenguin.mangolist.ui.theme.StatusDropped
+import com.slippedpenguin.mangolist.ui.theme.StatusPaused
+import com.slippedpenguin.mangolist.ui.theme.StatusPlan
+import com.slippedpenguin.mangolist.ui.theme.StatusRepeating
+import com.slippedpenguin.mangolist.ui.theme.StatusWatching
 
 /*
  * Status pill — small labeled badge for the six list statuses AniHyou
@@ -30,12 +31,12 @@ fun StatusPill(
     modifier: Modifier = Modifier,
 ) {
     val (label, color) = when (status) {
-        "plan"      -> "PLAN"      to TierUnranked
-        "watching"  -> "WATCHING"  to Accent
-        "completed" -> "COMPLETED" to TierC
-        "dropped"   -> "DROPPED"   to TierD
-        "paused"    -> "PAUSED"    to TextMuted
-        "repeating" -> "REPEATING" to Accent
+        "plan"      -> "PLAN"      to StatusPlan
+        "watching"  -> "WATCHING"  to StatusWatching
+        "completed" -> "COMPLETED" to StatusCompleted
+        "dropped"   -> "DROPPED"   to StatusDropped
+        "paused"    -> "PAUSED"    to StatusPaused
+        "repeating" -> "REPEATING" to StatusRepeating
         else        -> status.uppercase() to BorderStrong
     }
     Box(

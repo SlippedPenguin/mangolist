@@ -6,6 +6,15 @@ import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.net.HttpURLConnection
+import java.net.URL
 
 /*
  * AniListClient — thin wrapper over Apollo Kotlin 4.x for the AniList GraphQL
@@ -70,6 +79,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 currentEp    = 0,
                 status       = "plan",
                 notes        = "",
+                personalScore = null,
                 listEntryId  = null,
                 updatedAt    = now,
                 syncedAt     = null,
@@ -91,7 +101,16 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
         return try {
             val response = authClient.query(GetViewerQuery()).execute()
             val v = response.data?.Viewer ?: return null
-            AnimeViewer(id = v.id, name = v.name)
+            AnimeViewer(
+                id = v.id,
+                name = v.name,
+                avatarLarge = v.avatar?.large,
+                avatarMedium = v.avatar?.medium,
+                animeCount = v.statistics?.anime?.count,
+                animeMeanScore = v.statistics?.anime?.meanScore,
+                episodesWatched = v.statistics?.anime?.episodesWatched,
+                minutesWatched = v.statistics?.anime?.minutesWatched,
+            )
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getViewer failed", e)
             null
@@ -177,21 +196,124 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     /**
      * Push a single AnimeEntry edit back to AniList via SaveMediaListEntry.
      *
-     * v0.4.4 stub: returns null without performing the mutation. The Apollo
-     * Kotlin 4.x generated ctor signature for SaveMediaListEntryMutation has
-     * proven opaque from cold — every typed accessor I tried (PascalCase
-     * `SaveMediaListEntry?.id`, camelCase `saveMediaListEntry?.id`, toString-
-     * regex pull) raised 'Unresolved reference' against the generated
-     * constructor on CI. The DetailScreen Sync handler already renders "Sync
-     * failed — try again" when this returns null, so the user-facing UI
-     * degrades gracefully. v0.5 replaces this with a hand-rolled OkHttp POST
-     * to graphql.anilist.co so we don't fight the codegen anymore.
+     * v0.6: replaced the Apollo codegen stub with a hand-rolled kotlinx
+     * serialization JSON POST because the generated SaveMediaListEntryMutation
+     * constructor proved opaque at kotlinc.
+     *
+     * Mappings:
+     *   - status → AniList MediaListStatus enum (plan→PLANNING, watching→CURRENT, etc.)
+     *   - personalScore / 10.0 → score Float (0-10 scale)
+     *   - listEntryId non-null → update; null → create new
+     *
+     * Returns the AniList MediaList id (new or existing) on success, null on failure.
      */
-    @Suppress("UNUSED_PARAMETER")  // entry stays in the signature for DetailScreen caller compat
     suspend fun saveEntry(token: String, entry: AnimeEntry): Int? {
         if (token.isBlank()) return null
-        android.util.Log.w("AniListClient", "saveEntry: stub (v0.5: OkHttp POST)")
-        return null
+        return try {
+            val anilistStatus = when (entry.status) {
+                "plan"      -> "PLANNING"
+                "watching"  -> "CURRENT"
+                "completed" -> "COMPLETED"
+                "dropped"   -> "DROPPED"
+                "paused"    -> "PAUSED"
+                "repeating" -> "REPEATING"
+                else        -> "CURRENT"
+            }
+            val variables = buildJsonObject {
+                entry.listEntryId?.let { put("id", it) }
+                put("mediaId", entry.anilistId)
+                put("status", anilistStatus)
+                put("progress", entry.currentEp)
+                entry.personalScore?.let { put("score", it / 10.0) }
+            }
+            val payload = buildJsonObject {
+                put(
+                    "query",
+                    "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$score:Float,\$progress:Int)" +
+                    "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,score:\$score,progress:\$progress)" +
+                    "{id}}"
+                )
+                put("variables", variables)
+            }
+            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            val body = json.encodeToString(JsonObject.serializer(), payload)
+
+            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toByteArray()) }
+
+            if (conn.responseCode !in 200..299) {
+                android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}")
+                return null
+            }
+            val responseBody = conn.inputStream.bufferedReader().readText()
+            val root = json.parseToJsonElement(responseBody).jsonObject
+            root["data"]?.jsonObject
+                ?.get("SaveMediaListEntry")?.jsonObject
+                ?.get("id")?.jsonPrimitive?.int
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "saveEntry failed", e)
+            null
+        }
+    }
+
+    /**
+     * Fetch the next 7 days of airing schedules from AniList.
+     * Returns slots sorted by airingAt ascending.
+     */
+    suspend fun getAiringSchedule(): List<AiringSlot> {
+        val now = System.currentTimeMillis() / 1000
+        val week = now + 7 * 86400
+        return try {
+            val variables = buildJsonObject {
+                put("airingAtGreater", now.toInt())
+                put("airingAtLesser", week.toInt())
+            }
+            val payload = buildJsonObject {
+                put(
+                    "query",
+                    "query(\$airingAtGreater:Int!,\$airingAtLesser:Int!)" +
+                    "{Page(perPage:50){airingSchedules(airingAt_greater:\$airingAtGreater,airingAt_lesser:\$airingAtLesser,sort:[TIME])" +
+                    "{id airingAt episode media{id title{english romaji} coverImage{large}}}}}"
+                )
+                put("variables", variables)
+            }
+            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            val body = json.encodeToString(JsonObject.serializer(), payload)
+
+            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toByteArray()) }
+
+            if (conn.responseCode !in 200..299) return emptyList()
+            val responseBody = conn.inputStream.bufferedReader().readText()
+            val root = json.parseToJsonElement(responseBody).jsonObject
+            val schedules = root["data"]?.jsonObject
+                ?.get("Page")?.jsonObject
+                ?.get("airingSchedules")?.jsonArray ?: return emptyList()
+            schedules.mapNotNull { el ->
+                val obj = el.jsonObject
+                val media = obj["media"]?.jsonObject ?: return@mapNotNull null
+                val title = media["title"]?.jsonObject
+                AiringSlot(
+                    id = obj["id"]?.jsonPrimitive?.int ?: 0,
+                    airingAt = obj["airingAt"]?.jsonPrimitive?.long ?: 0,
+                    episode = obj["episode"]?.jsonPrimitive?.int ?: 0,
+                    animeId = media["id"]?.jsonPrimitive?.int ?: 0,
+                    title = title?.get("english")?.jsonPrimitive?.content
+                        ?: title?.get("romaji")?.jsonPrimitive?.content ?: "Untitled",
+                    coverLarge = media["coverImage"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "getAiringSchedule failed", e)
+            emptyList()
+        }
     }
 }
 
@@ -246,4 +368,24 @@ data class RelationCard(
  * id + name are surfaced in the UI today; the AniList `Viewer` query returns
  * more (avatar, statistics) — pull those in v0.5 once they're needed.
  */
-data class AnimeViewer(val id: Int, val name: String?)
+data class AnimeViewer(
+    val id: Int,
+    val name: String?,
+    val avatarLarge: String? = null,
+    val avatarMedium: String? = null,
+    // AniList statistics (from GetViewer.statistics.anime)
+    val animeCount: Int? = null,
+    val animeMeanScore: Double? = null,
+    val episodesWatched: Int? = null,
+    val minutesWatched: Int? = null,
+)
+
+/** One airing-schedule slot returned by GetAiringSchedule. */
+data class AiringSlot(
+    val id: Int,
+    val airingAt: Long,      // epoch seconds
+    val episode: Int,
+    val animeId: Int,
+    val title: String,
+    val coverLarge: String?,
+)

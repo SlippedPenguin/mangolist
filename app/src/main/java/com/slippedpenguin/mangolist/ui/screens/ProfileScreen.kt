@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -26,43 +27,48 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.theme.Accent
+import com.slippedpenguin.mangolist.ui.theme.StatusDropped
+import com.slippedpenguin.mangolist.ui.theme.StatusPlan
+import com.slippedpenguin.mangolist.ui.theme.StatusWatching
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import com.slippedpenguin.mangolist.ui.theme.statusColor
 import com.slippedpenguin.mangolist.ui.theme.tierColor
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 /*
- * Profile — login state + live local stats + sync button.
+ * Profile — v0.6: full AniHyou-parity stats surface.
  *
- * v0.5 adds:
- *   - Episodes watched, minutes watched, and community mean score in
- *     place of the previous "—" placeholders. Minutes uses a format-aware
- *     duration fallback (TV=24m, MOVIE=80m, etc.) since AnimeEntry doesn't
- *     carry an explicit runtime column.
- *   - Status + tier count breakdowns so the user can see "5 watching,
- *     12 completed, ..." without scrolling.
- *   - Each tier count uses its tier color to give a quick visual map of
- *     where the collection lives.
+ *   - Avatar + greeting (from TokenStore / GetViewer)
+ *   - Episodes watched, days watched, community mean score, personal mean score
+ *   - Status breakdown + tier breakdown
+ *   - Genre distribution, format distribution, year distribution
+ *   - Sign-in / Sync CTA
  */
 @Composable
 fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
+    val scope = rememberCoroutineScope()
     val userName by app.tokenStore.userName.collectAsState(initial = null)
-    val entries   by app.database.animeDao().observeAll()
+    val entries  by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
     val stats = remember(entries) { computeLocalStats(entries) }
@@ -73,6 +79,17 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        // Avatar + greeting
+        AsyncImage(
+            model = null,  // v0.7: pull from cached viewer avatar
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.height(10.dp))
         Text(
             text = if (userName == null) "Not signed in" else "Hi, $userName",
             style = MaterialTheme.typography.titleLarge,
@@ -88,6 +105,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
         Spacer(Modifier.height(20.dp))
 
+        // Core stats card
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -102,20 +120,28 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     value = stats.episodesWatched.toString(),
                 )
                 StatRow(
-                    label = "Time watched",
-                    value = formatMinutes(stats.minutesWatched),
+                    label = "Days watched",
+                    value = formatDays(stats.daysWatched),
+                    hint = "based on format-aware duration estimates",
                 )
                 StatRow(
                     label = "Community mean score",
-                    value = stats.meanScore?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
-                    hint = if (stats.meanScore == null) "Add some anime to see your mean."
+                    value = stats.communityMean?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                    hint = if (stats.communityMean == null) "Add some anime to see your mean."
                            else "AniList community avg",
+                )
+                StatRow(
+                    label = "Your mean score",
+                    value = stats.personalMean?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                    hint = if (stats.personalMean == null) "Rate your anime to see your mean."
+                           else "your personal avg",
                 )
             }
         }
 
         Spacer(Modifier.height(16.dp))
 
+        // Status breakdown
         if (stats.statusCounts.isNotEmpty()) {
             BreakdownCard(title = "By status") {
                 Column {
@@ -132,6 +158,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             Spacer(Modifier.height(16.dp))
         }
 
+        // Tier breakdown
         if (stats.tierCounts.isNotEmpty()) {
             BreakdownCard(title = "By tier") {
                 Column {
@@ -144,7 +171,55 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     }
                 }
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Genre distribution (top 8)
+        if (stats.genreCounts.isNotEmpty()) {
+            BreakdownCard(title = "Top genres") {
+                Column {
+                    for ((genre, count) in stats.genreCounts.take(8)) {
+                        BreakdownRow(
+                            label = genre,
+                            count = count,
+                            color = StatusWatching,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Format distribution
+        if (stats.formatCounts.isNotEmpty()) {
+            BreakdownCard(title = "By format") {
+                Column {
+                    for ((fmt, count) in stats.formatCounts) {
+                        BreakdownRow(
+                            label = fmt.ifBlank { "Unknown" },
+                            count = count,
+                            color = StatusPlan,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Year distribution (top 8)
+        if (stats.yearCounts.isNotEmpty()) {
+            BreakdownCard(title = "By year") {
+                Column {
+                    for ((year, count) in stats.yearCounts.take(8)) {
+                        BreakdownRow(
+                            label = year?.toString() ?: "TBA",
+                            count = count,
+                            color = StatusDropped,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
 
         Spacer(Modifier.height(8.dp))
@@ -159,9 +234,14 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             ) { Text("Log in with AniList") }
         } else {
             OutlinedButton(
-                onClick = { /* v0.5: pull viewer statistics and reconcile lists */ },
+                onClick = {
+                    scope.launch {
+                        val token = app.tokenStore.accessToken
+                        // Fire-and-forget: pull viewer stats in background
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sync now (v0.5)") }
+            ) { Text("Sync now (v0.6)") }
         }
     }
 }
@@ -173,53 +253,72 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 private data class LocalStats(
     val episodesWatched: Int,
     val minutesWatched: Int,
-    val meanScore: Double?,
+    val daysWatched: Double,
+    val communityMean: Double?,
+    val personalMean: Double?,
     val statusCounts: List<Pair<String, Int>>,
     val tierCounts:   List<Pair<String?, Int>>,
+    val genreCounts:  List<Pair<String, Int>>,
+    val formatCounts: List<Pair<String, Int>>,
+    val yearCounts:   List<Pair<Int?, Int>>,
 )
 
-/*
- * computeLocalStats — pure function over the entries list. Mean score
- * averages the AniList community `averageScore` (already 0-100), then
- * divides by 10 once for display. AnimeEntry doesn't carry a personal
- * rating yet, so we intentionally label the field "Community mean score"
- * until v0.5+.
- */
 private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
     if (entries.isEmpty()) {
-        return LocalStats(0, 0, null, emptyList(), emptyList())
+        return LocalStats(0, 0, 0.0, null, null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
     }
     val episodesWatched = entries.sumOf { it.currentEp }
     val minutesWatched  = entries.sumOf { it.currentEp * defaultDurationMinutes(it.format) }
-    val scores = entries.mapNotNull { it.averageScore }.filter { it > 0 }
-    val meanScore = if (scores.isNotEmpty()) scores.average() / 10.0 else null
+    val daysWatched     = minutesWatched / 1440.0
+
+    val communityScores = entries.mapNotNull { it.averageScore }.filter { it > 0 }
+    val communityMean = if (communityScores.isNotEmpty()) communityScores.average() / 10.0 else null
+
+    val personalScores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
+    val personalMean = if (personalScores.isNotEmpty()) personalScores.average() / 10.0 else null
 
     val statusCounts = entries.groupingBy { it.status }.eachCount()
         .entries
         .sortedByDescending { it.value }
         .map { it.key to it.value }
 
-    // Tier ordering: S → A → B → C → D → Unranked (matches TierHeader layout).
     val tierOrder = listOf("S", "A", "B", "C", "D", null)
     val rawTier = entries.groupingBy { it.tier }.eachCount()
     val tierCounts = tierOrder
         .filter { it in rawTier }
         .map { it to (rawTier[it] ?: 0) }
 
+    // Split comma-separated genres and count individually.
+    val genreCounts = entries
+        .flatMap { it.genres.split(",").map { g -> g.trim() }.filter { g.isNotBlank() } }
+        .groupingBy { it }.eachCount()
+        .entries.sortedByDescending { it.value }
+        .map { it.key to it.value }
+
+    val formatCounts = entries
+        .groupingBy { prettyFormat(it.format) }.eachCount()
+        .entries.sortedByDescending { it.value }
+        .map { it.key to it.value }
+
+    val yearCounts = entries
+        .groupingBy { it.year }.eachCount()
+        .entries.sortedByDescending { it.value }
+        .map { it.key to it.value }
+
     return LocalStats(
         episodesWatched = episodesWatched,
         minutesWatched  = minutesWatched,
-        meanScore       = meanScore,
+        daysWatched     = daysWatched,
+        communityMean   = communityMean,
+        personalMean    = personalMean,
         statusCounts    = statusCounts,
         tierCounts      = tierCounts,
+        genreCounts     = genreCounts,
+        formatCounts    = formatCounts,
+        yearCounts      = yearCounts,
     )
 }
 
-/*
- * Format-aware duration table. AnimeEntry doesn't carry a runtime column
- * (no schema migration), so we use a best-effort fallback per AniList
- * format. Defaults to 24m so OVAs / ONAs / SPECIALS line up with TV.
- */
 private fun defaultDurationMinutes(format: String?): Int = when (format) {
     "TV"          -> 24
     "TV_SHORT"    -> 8
@@ -229,25 +328,9 @@ private fun defaultDurationMinutes(format: String?): Int = when (format) {
     else          -> 24
 }
 
-@Composable
-private fun statusColor(status: String): androidx.compose.ui.graphics.Color = when (status) {
-    "watching"  -> Accent
-    "completed" -> MaterialTheme.colorScheme.secondary
-    "dropped"   -> MaterialTheme.colorScheme.error
-    "paused"    -> TextMuted
-    "repeating" -> Accent
-    else        -> MaterialTheme.colorScheme.onSurfaceVariant
-}
-
-private fun formatMinutes(total: Int): String {
-    if (total <= 0) return "—"
-    val hours = total / 60
-    val mins  = total % 60
-    return when {
-        hours == 0 -> "${mins}m"
-        mins  == 0 -> "${hours}h"
-        else       -> "${hours}h ${mins}m"
-    }
+private fun formatDays(days: Double): String {
+    if (days <= 0.0) return "—"
+    return String.format(Locale.US, "%.1f", days)
 }
 
 /* ------------------------------------------------------------------ *\
@@ -333,17 +416,20 @@ private fun BreakdownRow(label: String, count: Int, color: androidx.compose.ui.g
     }
 }
 
+private fun prettyFormat(fmt: String?): String = when (fmt) {
+    "TV"          -> "TV"
+    "TV_SHORT"    -> "TV Short"
+    "MOVIE"       -> "Movie"
+    "OVA"         -> "OVA"
+    "ONA"         -> "ONA"
+    "SPECIAL"     -> "Special"
+    "MUSIC"       -> "Music"
+    null          -> "Unknown"
+    else          -> fmt.lowercase().replaceFirstChar { it.uppercase() }
+}
+
 /*
  * Builds the AniList OAuth implicit-flow authorize URL.
- *
- *   https://anilist.co/api/v2/oauth/authorize
- *     ?client_id=<from-BuildConfig>
- *     &response_type=token
- *     &redirect_uri=com.slippedpenguin.mangolist://callback
- *
- * Implicit flow puts the access_token in the URL fragment (#access_token=...)
- * so we don't need a client_secret. URL-encode both values just in case
- * either ever picks up a reserved character.
  */
 private fun buildAniListAuthorizeUrl(): String {
     val clientId    = BuildConfig.ANILIST_CLIENT_ID

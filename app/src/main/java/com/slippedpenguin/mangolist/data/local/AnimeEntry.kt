@@ -40,6 +40,7 @@ data class AnimeEntry(
     val currentEp: Int,            // 0..episodes
     val status: String,            // "plan" | "watching" | "completed" | "dropped"
     val notes: String,
+    val personalScore: Int? = null,  // null = unset; 0-100 (maps to 0-10 with one decimal)
 
     // Sync metadata
     val listEntryId: Int?,         // AniList MediaList id (null = never synced)

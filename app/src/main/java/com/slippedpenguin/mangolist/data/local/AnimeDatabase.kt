@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [AnimeEntry::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AnimeDatabase : RoomDatabase() {
@@ -35,7 +35,9 @@ abstract class AnimeDatabase : RoomDatabase() {
                     context.applicationContext,
                     AnimeDatabase::class.java,
                     DB_NAME,
-                ).build().also { INSTANCE = it }
+                )
+                    .fallbackToDestructiveMigration()
+                    .build().also { INSTANCE = it }
             }
         }
     }

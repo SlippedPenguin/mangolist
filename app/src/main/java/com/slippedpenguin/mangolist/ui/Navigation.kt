@@ -104,7 +104,9 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             composable(BottomDest.Watchlist.route) { WatchlistScreen(navController) }
             composable(BottomDest.Add.route)       { AddScreen(navController) }
             composable(BottomDest.Tiers.route)     { TiersScreen(navController) }
-            composable(BottomDest.Airing.route)    { AiringScreen() }
+            composable(BottomDest.Airing.route)    {
+                AiringScreen(onNavigateDetail = { id -> navController.navigate("detail/$id") })
+            }
             composable(BottomDest.Profile.route)   { ProfileScreen(navController) }
             composable("detail/{anilistId}") { entry ->
                 val id = entry.arguments?.getString("anilistId")?.toIntOrNull() ?: 0

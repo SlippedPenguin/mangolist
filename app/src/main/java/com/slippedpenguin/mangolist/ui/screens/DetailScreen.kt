@@ -119,6 +119,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     var showTierSheet   by remember { mutableStateOf(false) }
     var showStatusSheet by remember { mutableStateOf(false) }
     var showNotesDialog by remember { mutableStateOf(false) }
+    var showScorePicker  by remember { mutableStateOf(false) }
     var notesDraft      by remember { mutableStateOf("") }
     var synopsisExpanded by rememberSaveable { mutableStateOf(false) }
     var syncFeedback    by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
@@ -210,7 +211,12 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             val relations = details?.relations.orEmpty()
             if (relations.isNotEmpty()) {
                 item { SectionTitle("Related anime") }
-                item { RelationsRow(relations) }
+                item {
+                    RelationsRow(
+                        relations = relations,
+                        onNavigate = { relationId -> navController.navigate("detail/$relationId") },
+                    )
+                }
             }
             item {
                 TrackingCard(
@@ -220,6 +226,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                     onTierClick   = { showTierSheet = true },
                     onStatusClick = { showStatusSheet = true },
                     onNotesClick  = { showNotesDialog = true },
+                    onScoreClick  = { showScorePicker = true },
                     onAddToList   = addToList,
                     onSync        = requestSync,
                 )
@@ -310,6 +317,23 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                 }
             },
             onDismiss = { showNotesDialog = false },
+        )
+    }
+    if (showScorePicker) {
+        ScorePickerDialog(
+            current = entry?.personalScore,
+            onSave = { newScore ->
+                scope.launch {
+                    val e = entry ?: return@launch
+                    dao.update(
+                        e.copy(
+                            personalScore = newScore,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                    )
+                }
+            },
+            onDismiss = { showScorePicker = false },
         )
     }
 }
@@ -619,7 +643,7 @@ private fun CharactersRow(characters: List<CharacterCard>) {
 }
 
 @Composable
-private fun RelationsRow(relations: List<RelationCard>) {
+private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Unit = {}) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -628,6 +652,7 @@ private fun RelationsRow(relations: List<RelationCard>) {
         items(relations) { r ->
             Card(
                 modifier = Modifier.width(140.dp),
+                onClick = { onNavigate(r.id) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp),
             ) {
@@ -687,6 +712,7 @@ private fun TrackingCard(
     onTierClick: () -> Unit,
     onStatusClick: () -> Unit,
     onNotesClick: () -> Unit,
+    onScoreClick: () -> Unit,
     onAddToList: () -> Unit,
     onSync: () -> Unit,
 ) {
@@ -807,6 +833,16 @@ private fun TrackingCard(
                 else -> "✏️ ${e.notes.take(30)}…"
             }
             Text(label, fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onScoreClick,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            val scoreLabel = e.personalScore?.let { s ->
+                String.format(Locale.US, "★ %.1f", s / 10.0)
+            } ?: "☆ Rate this anime"
+            Text(scoreLabel, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(8.dp))
         Button(
@@ -1013,6 +1049,74 @@ private fun NotesDialog(
     )
 }
 
+/*
+ * ScorePickerDialog — grid of tappable scores (0–10, step 0.5). The
+ * current score is highlighted. Tapping a value dismisses and saves.
+ */
+@Composable
+private fun ScorePickerDialog(
+    current: Int?,
+    onSave: (Int?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf(current) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rate this anime") },
+        text = {
+            Column {
+                Text(
+                    text = if (selected != null)
+                        String.format(Locale.US, "★ %.1f / 10.0", selected / 10.0)
+                    else "No rating",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Accent,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    // Quick-set buttons: 1-10
+                    (1..10).forEach { star ->
+                        val scoreVal = star * 10
+                        val filled = selected != null && selected >= scoreVal
+                        TextButton(
+                            onClick = {
+                                selected = if (selected == scoreVal) null else scoreVal
+                            },
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                text = if (filled) "★" else "☆",
+                                color = if (filled) Accent else TextMuted,
+                                fontSize = 22.sp,
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    onClick = { selected = null },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Clear rating", color = TextSecondary) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(selected)
+                onDismiss()
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
 /* ------------------------------------------------------------------ *\
  *  Pretty-printers — AniList enums are uppercase by convention       *
 \* ------------------------------------------------------------------ */
@@ -1106,6 +1210,7 @@ internal fun buildEntryFromDetails(d: MediaDetails): AnimeEntry {
         currentEp    = 0,
         status       = "plan",
         notes        = "",
+        personalScore = null,
         listEntryId  = null,
         updatedAt    = now,
         syncedAt     = null,

@@ -31,6 +31,15 @@ val TierC         = Color(0xFF6dd66d)
 val TierD         = Color(0xFF5dc4d6)
 val TierUnranked  = Color(0xFF3a3a4e)
 
+// Status badge colors — one per list status so the tracking card + Profile
+// breakdown + StatusPill all share the same palette without theme leaks.
+val StatusPlan      = Color(0xFF6b6b80)
+val StatusWatching  = Color(0xFFff3366)  // same as Accent
+val StatusCompleted = Color(0xFF6dd66d)  // same as TierC
+val StatusDropped   = Color(0xFFe74c3c)  // distinct from Accent (rose vs crimson)
+val StatusPaused    = Color(0xFFf0a040)  // warm amber
+val StatusRepeating = Color(0xFF9b59b6)  // soft purple
+
 /** Lookup mapping a tier letter to its color. Returns TierUnranked for null. */
 fun tierColor(tier: String?): Color = when (tier) {
     "S" -> TierS
@@ -39,4 +48,15 @@ fun tierColor(tier: String?): Color = when (tier) {
     "C" -> TierC
     "D" -> TierD
     else -> TierUnranked
+}
+
+/** Lookup mapping a list status to its badge color. */
+fun statusColor(status: String): Color = when (status) {
+    "plan"      -> StatusPlan
+    "watching"  -> StatusWatching
+    "completed" -> StatusCompleted
+    "dropped"   -> StatusDropped
+    "paused"    -> StatusPaused
+    "repeating" -> StatusRepeating
+    else        -> StatusPlan
 }
