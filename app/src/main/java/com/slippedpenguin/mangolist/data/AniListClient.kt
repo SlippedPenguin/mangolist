@@ -206,19 +206,19 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     suspend fun exchangeCodeForToken(code: String): String? {
         if (code.isBlank()) return null
         return try {
-            val payload = buildJsonObject {
-                put("grant_type", "authorization_code")
-                put("client_id", BuildConfig.ANILIST_CLIENT_ID.toInt())
-                put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
-                put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
-                put("code", code)
-            }
+            // AniList's token endpoint requires application/x-www-form-urlencoded
+            // (OAuth2 RFC 6749). Sending JSON causes "invalid_client" errors.
+            val clientId = BuildConfig.ANILIST_CLIENT_ID.toInt()
+            val clientSecret = java.net.URLEncoder.encode(BuildConfig.ANILIST_CLIENT_SECRET, "UTF-8")
+            val redirectUri = java.net.URLEncoder.encode(BuildConfig.ANILIST_REDIRECT_URI, "UTF-8")
+            val encodedCode = java.net.URLEncoder.encode(code, "UTF-8")
+            val body = "grant_type=authorization_code&client_id=$clientId&client_secret=$clientSecret&redirect_uri=$redirectUri&code=$encodedCode"
+
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-            val body = json.encodeToString(JsonObject.serializer(), payload)
 
             val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             conn.doOutput = true
             conn.outputStream.use { it.write(body.toByteArray()) }
 
