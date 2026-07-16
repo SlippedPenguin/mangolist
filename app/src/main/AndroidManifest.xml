@@ -29,10 +29,10 @@
             </intent-filter>
             <!--
                  AniList OAuth redirect: after the user authorizes in Chrome
-                 Custom Tab, the browser hops back into the app via the custom
-                 scheme com.slippedpenguin.mangolist with ?code=... in the
-                 query string. MainActivity parses that code in onCreate /
-                 onNewIntent and writes the token to TokenStore.
+                 Custom Tab, the browser hops back into the app via
+                 com.slippedpenguin.mangolist://callback?code=... .
+                 MainActivity parses that code in onCreate / onNewIntent
+                 and writes the token to TokenStore.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
