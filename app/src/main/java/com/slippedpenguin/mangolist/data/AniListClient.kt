@@ -206,27 +206,29 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     suspend fun exchangeCodeForToken(code: String): String? {
         if (code.isBlank()) return null
         return try {
-            // AniList's token endpoint requires application/x-www-form-urlencoded
-            // (OAuth2 RFC 6749). Sending JSON causes "invalid_client" errors.
-            // NOTE: Do NOT send redirect_uri in the token exchange — AniList
-            // rejects with "invalid_client" if the redirect_uri doesn't match
-            // the registered URI exactly. The redirect_uri is only required
-            // during the authorize step, not the token exchange.
-            val clientId = BuildConfig.ANILIST_CLIENT_ID.toInt()
-            val clientSecret = java.net.URLEncoder.encode(BuildConfig.ANILIST_CLIENT_SECRET, "UTF-8")
-            val encodedCode = java.net.URLEncoder.encode(code, "UTF-8")
-            val body = "grant_type=authorization_code&client_id=$clientId&client_secret=$clientSecret&code=$encodedCode"
-
+            // AniList's token endpoint expects a JSON body per the official docs.
+            // client_id must be sent as an integer (Laravel Passport rejects the
+            // string form). redirect_uri must match the registered URI exactly.
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            val payload = buildJsonObject {
+                put("grant_type", "authorization_code")
+                put("client_id", BuildConfig.ANILIST_CLIENT_ID.toInt())
+                put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
+                put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
+                put("code", code)
+            }
+            val body = json.encodeToString(JsonObject.serializer(), payload)
 
             val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
             conn.doOutput = true
             conn.outputStream.use { it.write(body.toByteArray()) }
 
             if (conn.responseCode !in 200..299) {
-                android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}")
+                val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}: $errorBody")
                 return null
             }
             val responseBody = conn.inputStream.bufferedReader().readText()

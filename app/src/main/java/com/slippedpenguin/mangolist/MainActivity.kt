@@ -70,8 +70,17 @@ class MainActivity : ComponentActivity() {
         val data: Uri = intent?.data ?: return
         val expectedUri    = BuildConfig.ANILIST_REDIRECT_URI
         val expectedScheme = expectedUri.substringBefore("://")
-        val expectedHost   = expectedUri.substringAfter("://").substringBefore("/")
-        if (data.scheme != expectedScheme || data.host != expectedHost) return
+        // The registered redirect URI may be scheme-only (e.g.
+        // "com.slippedpenguin.mangolist"). Only enforce a host check when the
+        // configured URI actually has an authority section.
+        val hasAuthority   = expectedUri.contains("://")
+        val expectedHost   = if (hasAuthority) {
+            expectedUri.substringAfter("://").substringBefore("/").substringBefore("?")
+        } else {
+            ""
+        }
+        if (data.scheme != expectedScheme) return
+        if (hasAuthority && data.host != expectedHost) return
 
         val app = applicationContext as AnimeApp
 

@@ -52,7 +52,7 @@ jobs:
           cat > local.properties <<EOF
           anilist.client.id=46025
           anilist.client.secret=${{ secrets.ANILIST_CLIENT_SECRET }}
-          anilist.redirect.uri=com.slippedpenguin.mangolist://callback
+          anilist.redirect.uri=com.slippedpenguin.mangolist
           EOF
 
       # Pull the live AniList GraphQL schema before assembly. The

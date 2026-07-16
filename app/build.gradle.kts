@@ -6,7 +6,7 @@ import java.util.Properties
  * secrets never leak. Add to your local.properties:
  *   anilist.client.id=<your-client-id-from-anilist-co-api-v2-oauth>
  *   anilist.client.secret=<your-client-secret>
- *   anilist.redirect.uri=com.slippedpenguin.mangolist://callback
+ *   anilist.redirect.uri=com.slippedpenguin.mangolist
  *
  * If unset, the build still succeeds — the URLs it generates just won't work
  * until you register the app at https://anilist.co/api/v2/oauth.
@@ -57,7 +57,7 @@ android {
         buildConfigField(
             "String",
             "ANILIST_REDIRECT_URI",
-            "\"${anilistLocalProps.getProperty("anilist.redirect.uri", "com.slippedpenguin.mangolist://callback").trim().trim('"')}\"",
+            "\"${anilistLocalProps.getProperty("anilist.redirect.uri", "com.slippedpenguin.mangolist").trim().trim('"')}\"",
         )
     }
 
