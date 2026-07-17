@@ -149,6 +149,7 @@ fun AiringScreen(
             }
         }
     }
+}
 
 /*
  * Day-bucket label: \"Today\", \"Tomorrow\", \"Wed, Jul 15\", etc.
