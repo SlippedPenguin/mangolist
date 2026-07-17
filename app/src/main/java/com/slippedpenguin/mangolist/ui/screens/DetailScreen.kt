@@ -227,6 +227,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             }
             item {
                 TrackingCard(
+                    app           = app,
                     entry         = entry,
                     dao           = dao,
                     scope         = scope,
@@ -295,6 +296,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
 
     if (showTierSheet) {
         TierPickerDialog(
+            app = app,
             entry = entry,
             dao = dao,
             scope = scope,
@@ -303,6 +305,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     }
     if (showStatusSheet) {
         StatusPickerDialog(
+            app = app,
             entry = entry,
             dao = dao,
             scope = scope,
@@ -321,7 +324,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                             updatedAt = System.currentTimeMillis(),
                         )
                     )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                 }
             },
             onDismiss = { showNotesDialog = false },
@@ -339,7 +342,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                             updatedAt = System.currentTimeMillis(),
                         )
                     )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                 }
             },
             onDismiss = { showScorePicker = false },
@@ -715,6 +718,7 @@ private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Uni
 \* ------------------------------------------------------------------ */
 @Composable
 private fun TrackingCard(
+    app: AnimeApp,
     entry: AnimeEntry?,
     dao: AnimeDao,
     scope: CoroutineScope,
@@ -791,12 +795,12 @@ private fun TrackingCard(
                                 updatedAt = now,
                             )
                         )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                     } else {
                         dao.update(
                             e.copy(currentEp = prev, updatedAt = now)
                         )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                     }
                 }
             },
@@ -815,12 +819,12 @@ private fun TrackingCard(
                                 updatedAt = now,
                             )
                         )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                     } else {
                         dao.update(
                             e.copy(currentEp = next, updatedAt = now)
                         )
-                            SyncWorker.enqueue(context)
+                            SyncWorker.enqueue(app)
                     }
                 }
             },
@@ -911,6 +915,7 @@ private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: (
 \* ------------------------------------------------------------------ */
 @Composable
 private fun TierPickerDialog(
+    app: AnimeApp,
     entry: AnimeEntry?,
     dao: AnimeDao,
     scope: CoroutineScope,
@@ -931,7 +936,7 @@ private fun TierPickerDialog(
                             )?.let { updated ->
                                 scope.launch {
                                 dao.update(updated)
-                                SyncWorker.enqueue(context)
+                                SyncWorker.enqueue(app)
                             }
                             }
                             onDismiss()
@@ -955,7 +960,7 @@ private fun TierPickerDialog(
                         )?.let { updated ->
                             scope.launch {
                                 dao.update(updated)
-                                SyncWorker.enqueue(context)
+                                SyncWorker.enqueue(app)
                             }
                         }
                         onDismiss()
@@ -979,6 +984,7 @@ private fun TierPickerDialog(
  */
 @Composable
 private fun StatusPickerDialog(
+    app: AnimeApp,
     entry: AnimeEntry?,
     dao: AnimeDao,
     scope: CoroutineScope,
@@ -999,7 +1005,7 @@ private fun StatusPickerDialog(
                             )?.let { updated ->
                                 scope.launch {
                                 dao.update(updated)
-                                SyncWorker.enqueue(context)
+                                SyncWorker.enqueue(app)
                             }
                             }
                             onDismiss()
