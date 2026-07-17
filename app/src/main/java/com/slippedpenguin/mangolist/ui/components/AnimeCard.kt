@@ -51,6 +51,7 @@ fun AnimeCard(
     onClick: () -> Unit = {},
     onLongClick: () -> Unit = {},
     showTier: Boolean = true,
+    rankText: String? = null,
 ) {
     Card(
         modifier = modifier
@@ -110,7 +111,7 @@ fun AnimeCard(
             }
 
             if (showTier) {
-                EloBadge(tier = entry.tier, elo = entry.elo)
+                EloBadge(tier = entry.tier, rankText = rankText)
             }
         }
     }

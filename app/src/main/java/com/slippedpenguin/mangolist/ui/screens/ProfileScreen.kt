@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -45,6 +46,8 @@ import android.widget.Toast
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.BuildConfig
+import com.slippedpenguin.mangolist.data.ScoreDisplay
+import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
@@ -56,6 +59,7 @@ import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.statusColor
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import java.util.Locale
 
 /*
@@ -76,6 +80,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId by app.tokenStore.userId.collectAsState(initial = null)
     val avatarUrl by app.tokenStore.avatarUrl.collectAsState(initial = null)
+    val scoreScale by app.tokenStore.scoreScale.collectAsState(initial = ScoreScale.Default)
     val entries  by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
@@ -129,6 +134,35 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             textAlign = TextAlign.Center,
         )
 
+        Spacer(Modifier.height(12.dp))
+
+        // Score scale toggle — picks how personalScore and community/personal
+        // means render across the app. The DataStore value is shared with
+        // DetailScreen and any future score surface through TokenStore.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterChip(
+                selected = scoreScale == ScoreScale.OUT_OF_10,
+                onClick = {
+                    scope.launch {
+                        app.tokenStore.setScoreScale(ScoreScale.OUT_OF_10)
+                    }
+                },
+                label = { Text("Out of 10") },
+            )
+            FilterChip(
+                selected = scoreScale == ScoreScale.OUT_OF_100,
+                onClick = {
+                    scope.launch {
+                        app.tokenStore.setScoreScale(ScoreScale.OUT_OF_100)
+                    }
+                },
+                label = { Text("Out of 100") },
+            )
+        }
+
         Spacer(Modifier.height(20.dp))
 
         // Core stats card
@@ -152,13 +186,13 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 )
                 StatRow(
                     label = "Community mean score",
-                    value = stats.communityMean?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                    value = formatMean(stats.communityMean, scoreScale),
                     hint = if (stats.communityMean == null) "Add some anime to see your mean."
                            else "AniList community avg",
                 )
                 StatRow(
                     label = "Your mean score",
-                    value = stats.personalMean?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                    value = formatMean(stats.personalMean, scoreScale),
                     hint = if (stats.personalMean == null) "Rate your anime to see your mean."
                            else "your personal avg",
                 )
@@ -371,11 +405,13 @@ private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
     val minutesWatched  = entries.sumOf { it.currentEp * defaultDurationMinutes(it.format) }
     val daysWatched     = minutesWatched / 1440.0
 
+    // Means are kept on the 0-100 AniList scale so the ScoreScale toggle
+    // can map them at display time without losing precision.
     val communityScores = entries.mapNotNull { it.averageScore }.filter { it > 0 }
-    val communityMean = if (communityScores.isNotEmpty()) communityScores.average() / 10.0 else null
+    val communityMean = if (communityScores.isNotEmpty()) communityScores.average() else null
 
     val personalScores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
-    val personalMean = if (personalScores.isNotEmpty()) personalScores.average() / 10.0 else null
+    val personalMean = if (personalScores.isNotEmpty()) personalScores.average() else null
 
     val statusCounts = entries.groupingBy { it.status }.eachCount()
         .entries
@@ -431,6 +467,16 @@ private fun defaultDurationMinutes(format: String?): Int = when (format) {
 private fun formatDays(days: Double): String {
     if (days <= 0.0) return "—"
     return String.format(Locale.US, "%.1f", days)
+}
+
+/*
+ * formatMean — render a community or personal mean that's stored on
+ * the 0-100 AniList scale. Returns "—" for null/0 so the StatRow never
+ * shows literal "null".
+ */
+private fun formatMean(mean: Double?, scale: ScoreScale): String {
+    if (mean == null || mean <= 0.0) return "—"
+    return ScoreDisplay.label(mean.roundToInt(), scale)
 }
 
 /* ------------------------------------------------------------------ *\

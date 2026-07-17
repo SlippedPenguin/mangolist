@@ -16,15 +16,21 @@ import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 
 /*
- * EloBadge — tier letter on top, current Elo score below. Floats on the
- * right edge of an AnimeCard. When the entry is unranked, the letter slot
- * shows a centered "·" but keeps the same outline so multiple unranked
- * cards line up neatly on the latch screen.
+ * EloBadge — tier letter on top, the user's *rank within that tier* below
+ * (e.g. "#3 of 8"). We deliberately stopped printing the raw Elo number
+ * because naked Elo (1500, 1620, …) on cards is meaningless to anyone who
+ * hasn't seen the engine docs. Rank-within-tier tells the user the
+ * concrete thing they care about: how this anime stacks up against the
+ * others they've put in the same tier.
+ *
+ * When the entry is unranked (tier == null) or no rank text is supplied,
+ * the slot shows a centered dash so multiple unranked cards line up
+ * neatly on the latch screen.
  */
 @Composable
 fun EloBadge(
     tier: String?,
-    elo: Int,
+    rankText: String?,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -36,13 +42,13 @@ fun EloBadge(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = tier ?: "·",
+                text = tier ?: "—",
                 style = MaterialTheme.typography.labelMedium,
                 color = tierColor(tier),
                 fontWeight = FontWeight.ExtraBold,
             )
             Text(
-                text = elo.toString(),
+                text = rankText ?: "—",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             )

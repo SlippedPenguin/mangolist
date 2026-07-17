@@ -66,6 +66,8 @@ import com.slippedpenguin.mangolist.data.CharacterCard
 import com.slippedpenguin.mangolist.data.EloEngine
 import com.slippedpenguin.mangolist.data.MediaDetails
 import com.slippedpenguin.mangolist.data.RelationCard
+import com.slippedpenguin.mangolist.data.ScoreDisplay
+import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.local.AnimeDao
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
@@ -115,6 +117,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
 
     val entry by dao.observeById(anilistId).collectAsState(initial = null)
     val token by app.tokenStore.accessToken.collectAsState(initial = null)
+    val scoreScale by app.tokenStore.scoreScale.collectAsState(initial = ScoreScale.Default)
 
     var fetchedDetails  by remember { mutableStateOf<MediaDetails?>(null) }
     var detailsLoaded   by remember { mutableStateOf(false) }
@@ -176,7 +179,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                         updatedAt = serverMillis,
                     )
                 )
-                syncFeedback = "Synced to AniList ✓" to false
+                syncFeedback = "Synced to AniList" to false
             } else {
                 syncFeedback = "Sync failed — try again." to true
             }
@@ -333,6 +336,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     if (showScorePicker) {
         ScorePickerDialog(
             current = entry?.personalScore,
+            scoreScale = scoreScale,
             onSave = { newScore ->
                 scope.launch {
                     val e = entry ?: return@launch
@@ -845,9 +849,9 @@ private fun TrackingCard(
             modifier = Modifier.fillMaxWidth(),
         ) {
             val label = when {
-                e.notes.isBlank() -> "✏️ Add notes"
-                e.notes.length <= 30 -> "✏️ ${e.notes}"
-                else -> "✏️ ${e.notes.take(30)}…"
+                e.notes.isBlank() -> "Notes: Add notes"
+                e.notes.length <= 30 -> "Notes: ${e.notes}"
+                else -> "Notes: ${e.notes.take(30)}…"
             }
             Text(label, fontWeight = FontWeight.SemiBold)
         }
@@ -856,10 +860,10 @@ private fun TrackingCard(
             onClick = onScoreClick,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            val scoreLabel = e.personalScore?.let { s ->
-                String.format(Locale.US, "★ %.1f", s / 10.0)
-            } ?: "☆ Rate this anime"
-            Text(scoreLabel, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = ScoreDisplay.label(e.personalScore, scoreScale),
+                fontWeight = FontWeight.SemiBold,
+            )
         }
         Spacer(Modifier.height(8.dp))
         Button(
@@ -1083,6 +1087,7 @@ private fun NotesDialog(
 @Composable
 private fun ScorePickerDialog(
     current: Int?,
+    scoreScale: ScoreScale,
     onSave: (Int?) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1095,7 +1100,7 @@ private fun ScorePickerDialog(
             Column {
                 Text(
                     text = if (sel != null)
-                        String.format(Locale.US, "★ %.1f / 10.0", sel / 10.0)
+                        ScoreDisplay.label(sel, scoreScale)
                     else "No rating",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
@@ -1103,11 +1108,20 @@ private fun ScorePickerDialog(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 )
+                Text(
+                    text = ScoreDisplay.axisLabel(scoreScale),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(0.dp),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    // Quick-set buttons: 1-10
+                    // Quick-set buttons: step labels per the chosen scale
+                    // (OUT_OF_10 -> "1.0".."10.0" | OUT_OF_100 -> "10".."100"
+                    //  in increments of 10).
                     (1..10).forEach { star ->
                         val scoreVal = star * 10
                         val filled = sel != null && sel >= scoreVal
@@ -1119,7 +1133,7 @@ private fun ScorePickerDialog(
                             contentPadding = PaddingValues(0.dp),
                         ) {
                             Text(
-                                text = if (filled) "★" else "☆",
+                                text = ScoreDisplay.stepLabel(star, scoreScale),
                                 color = if (filled) Accent else TextMuted,
                                 fontSize = 22.sp,
                             )

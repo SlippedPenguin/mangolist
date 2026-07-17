@@ -204,6 +204,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 items(entries, key = { it.anilistId }) { entry ->
                     AnimeCard(
                         entry = entry,
+                        rankText = rankWithinTierText(entry, entries),
                         onClick = { navController.navigate("detail/${entry.anilistId}") },
                         onLongClick = { longPressEntry = entry },
                     )
@@ -219,6 +220,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             items(unranked, key = { it.anilistId }) { entry ->
                 AnimeCard(
                     entry = entry,
+                    rankText = null,
                     onClick = { navController.navigate("detail/${entry.anilistId}") },
                     onLongClick = { longPressEntry = entry },
                 )
@@ -497,7 +499,7 @@ private fun VsModeCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "Elo $elo",
+                    text = "Skill ~$elo",
                     style = MaterialTheme.typography.labelMedium,
                     color = tierColor(entry.tier),
                     fontWeight = FontWeight.ExtraBold,
@@ -518,14 +520,30 @@ private fun eloRangeOf(entries: List<AnimeEntry>): IntRange? {
 }
 
 private fun eloRangeHint(tier: String?, count: Int, eloRange: IntRange?): String {
-    val rangeTail = "Elo · long-press to rank"
-    if (count == 0) {
-        return if (tier == null) "long-press any card to rank"
-               else "tap a card → long-press to rank"
+    // eloRange is kept on the signature so we don't need to touch every
+    // call site, but we no longer surface the raw number — naked Elo on
+    // a tier header is uninformative. The header now shows the count and
+    // a long-press hint.
+    return when {
+        count == 0 -> if (tier == null) "long-press any card to rank"
+                      else "long-press a card to add to this tier"
+        else       -> "$count in tier - long-press to re-rank"
     }
-    val lo = eloRange?.first ?: return "long-press to rank further"
-    val hi = eloRange?.last ?: return "long-press to rank further"
-    return "$lo-$hi $rangeTail"
+}
+
+/*
+ * rankWithinTierText — "#3 of 8" style label for an entry inside its
+ * tier. Sorted by Elo descending so #1 is the entry the user already
+ * likes most in that tier. Returns null for the unranked bucket (the
+ * badge then falls back to a centered dash).
+ */
+private fun rankWithinTierText(
+    target: AnimeEntry,
+    tierEntries: List<AnimeEntry>,
+): String? {
+    val sorted = tierEntries.sortedByDescending { it.elo }
+    val idx = sorted.indexOfFirst { it.anilistId == target.anilistId }
+    return if (idx < 0) null else "#${idx + 1} of ${sorted.size}"
 }
 
 private fun tierHint(
