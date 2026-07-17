@@ -95,17 +95,19 @@ class MainActivity : ComponentActivity() {
                     val userName = viewer?.name
                     app.tokenStore.saveToken(token, userId = userId, userName = userName)
                     if (userId > 0) {
-                        val synced = app.anilistClient.syncUserList(token, userId)
-                        if (synced != null) {
+                        val result = app.anilistClient.syncUserList(token, userId)
+                        if (result.entries != null) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
                             app.database.animeDao().upsertAll(merged)
                         } else {
+                            val err = result.error ?: "unknown"
+                            val msg = if (err.length > 150) err.take(150) + "…" else err
                             runOnUiThread {
                                 android.widget.Toast.makeText(
                                     this@MainActivity,
-                                    "List sync failed after login",
-                                    android.widget.Toast.LENGTH_SHORT,
+                                    "List sync failed after login: $msg",
+                                    android.widget.Toast.LENGTH_LONG,
                                 ).show()
                             }
                         }
@@ -123,17 +125,17 @@ class MainActivity : ComponentActivity() {
             val userName = viewer?.name
             app.tokenStore.saveToken(token, userId = userId, userName = userName)
             if (userId > 0) {
-                val synced = app.anilistClient.syncUserList(token, userId)
-                if (synced != null) {
+                val result = app.anilistClient.syncUserList(token, userId)
+                if (result.entries != null) {
                     val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                    val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
+                    val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
                     app.database.animeDao().upsertAll(merged)
                 } else {
                     runOnUiThread {
                         android.widget.Toast.makeText(
                             this@MainActivity,
-                            "List sync failed after login",
-                            android.widget.Toast.LENGTH_SHORT,
+                            "List sync failed after login: ${result.error ?: "unknown"}",
+                            android.widget.Toast.LENGTH_LONG,
                         ).show()
                     }
                 }

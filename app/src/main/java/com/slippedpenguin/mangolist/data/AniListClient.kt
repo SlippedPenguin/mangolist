@@ -127,10 +127,14 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     /**
      * Fetch the authenticated viewer's full anime list and map each entry to
      * the local AnimeEntry model. Uses a hand-rolled GraphQL POST to avoid
-     * Apollo codegen fragility with fragment spreads. Returns null on error.
+     * Apollo codegen fragility with fragment spreads.
+     *
+     * Returns a [SyncResult] so callers can surface the actual error message
+     * instead of a generic "Sync failed" toast.
      */
-    suspend fun syncUserList(token: String, userId: Int): List<AnimeEntry>? {
-        if (token.isBlank() || userId <= 0) return null
+    suspend fun syncUserList(token: String, userId: Int): SyncResult {
+        if (token.isBlank()) return SyncResult(null, "No access token. Please log in again.")
+        if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
         return try {
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
             val payload = buildJsonObject {
@@ -176,15 +180,31 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             conn.doOutput = true
             conn.outputStream.use { it.write(body.toByteArray()) }
 
-            if (conn.responseCode !in 200..299) {
-                android.util.Log.w("AniListClient", "syncUserList HTTP ${conn.responseCode}")
-                return null
+            val responseCode = conn.responseCode
+            val responseBody = if (responseCode in 200..299) {
+                conn.inputStream.bufferedReader().readText()
+            } else {
+                conn.errorStream?.bufferedReader()?.readText() ?: ""
             }
-            val responseBody = conn.inputStream.bufferedReader().readText()
-            val root = json.parseToJsonElement(responseBody).jsonObject
-            val nowMillis = System.currentTimeMillis()
 
-            root["data"]?.jsonObject
+            if (responseCode !in 200..299) {
+                val msg = "HTTP $responseCode: ${responseBody.take(200)}"
+                android.util.Log.w("AniListClient", "syncUserList $msg")
+                return SyncResult(null, msg)
+            }
+
+            val root = json.parseToJsonElement(responseBody).jsonObject
+
+            // Surface GraphQL errors even when HTTP is 200.
+            val errors = root["errors"]?.jsonArray
+            if (errors != null && errors.isNotEmpty()) {
+                val msg = errors.joinToString(", ") { it.jsonObject["message"]?.jsonPrimitive?.content ?: "GraphQL error" }
+                android.util.Log.w("AniListClient", "syncUserList GraphQL errors: $msg")
+                return SyncResult(null, msg)
+            }
+
+            val nowMillis = System.currentTimeMillis()
+            val entries = root["data"]?.jsonObject
                 ?.get("MediaListCollection")?.jsonObject
                 ?.get("lists")?.jsonArray
                 ?.filterIsInstance<JsonObject>()
@@ -196,9 +216,10 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 }
                 ?.mapNotNull { entry -> parseMediaListEntry(entry, nowMillis) }
                 .orEmpty()
+            SyncResult(entries, null)
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "syncUserList failed", e)
-            null
+            SyncResult(null, e.message ?: "Unknown sync error")
         }
     }
 
@@ -565,4 +586,14 @@ data class AiringSlot(
     val animeId: Int,
     val title: String,
     val coverLarge: String?,
+)
+
+/**
+ * Result wrapper for list-sync operations.
+ * `entries` is the synced list on success; `error` is a human-readable
+ * message when the sync fails.
+ */
+data class SyncResult(
+    val entries: List<AnimeEntry>?,
+    val error: String?,
 )
