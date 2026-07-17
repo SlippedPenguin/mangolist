@@ -9,7 +9,9 @@ import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -120,6 +122,134 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
         } finally {
             authClient.close()
         }
+    }
+
+    /**
+     * Fetch the authenticated viewer's full anime list and map each entry to
+     * the local AnimeEntry model. Uses a hand-rolled GraphQL POST to avoid
+     * Apollo codegen fragility with fragment spreads. Returns null on error.
+     */
+    suspend fun syncUserList(token: String, userId: Int): List<AnimeEntry>? {
+        if (token.isBlank() || userId <= 0) return null
+        return try {
+            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+            val payload = buildJsonObject {
+                put(
+                    "query",
+                    """
+                    query(\$userId: Int!) {
+                      MediaListCollection(userId: \$userId, type: ANIME) {
+                        lists {
+                          name
+                          isCustomList
+                          entries {
+                            id
+                            status
+                            progress
+                            score
+                            notes
+                            updatedAt
+                            media {
+                              id
+                              title { romaji english }
+                              coverImage { large medium color }
+                              episodes
+                              format
+                              averageScore
+                              startDate { year }
+                              genres
+                            }
+                          }
+                        }
+                      }
+                    }
+                    """.trimIndent().replace("\n", " "),
+                )
+                put("variables", buildJsonObject { put("userId", userId) })
+            }
+            val body = json.encodeToString(JsonObject.serializer(), payload)
+
+            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.doOutput = true
+            conn.outputStream.use { it.write(body.toByteArray()) }
+
+            if (conn.responseCode !in 200..299) {
+                android.util.Log.w("AniListClient", "syncUserList HTTP ${conn.responseCode}")
+                return null
+            }
+            val responseBody = conn.inputStream.bufferedReader().readText()
+            val root = json.parseToJsonElement(responseBody).jsonObject
+            val nowMillis = System.currentTimeMillis()
+
+            root["data"]?.jsonObject
+                ?.get("MediaListCollection")?.jsonObject
+                ?.get("lists")?.jsonArray
+                ?.filterIsInstance<JsonObject>()
+                ?.filter { it["isCustomList"]?.jsonPrimitive?.boolean != true }
+                ?.flatMap { list ->
+                    list["entries"]?.jsonArray
+                        ?.filterIsInstance<JsonObject>()
+                        .orEmpty()
+                }
+                ?.mapNotNull { entry -> parseMediaListEntry(entry, nowMillis) }
+                .orEmpty()
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "syncUserList failed", e)
+            null
+        }
+    }
+
+    private fun parseMediaListEntry(entry: JsonObject, nowMillis: Long): AnimeEntry? {
+        val media = entry["media"]?.jsonObject ?: return null
+        val title = media["title"]?.jsonObject
+        val coverImage = media["coverImage"]?.jsonObject
+        val startDate = media["startDate"]?.jsonObject
+
+        val localStatus = when (entry["status"]?.jsonPrimitive?.content) {
+            "CURRENT"   -> "watching"
+            "PLANNING"  -> "plan"
+            "COMPLETED" -> "completed"
+            "DROPPED"   -> "dropped"
+            "PAUSED"    -> "paused"
+            "REPEATING" -> "repeating"
+            else        -> "watching"
+        }
+
+        val updatedAt = entry["updatedAt"]?.jsonPrimitive?.long
+        val editTime = updatedAt?.let { it * 1000L } ?: nowMillis
+
+        val score = entry["score"]?.jsonPrimitive?.double
+
+        return AnimeEntry(
+            anilistId     = media["id"]?.jsonPrimitive?.int ?: return null,
+            title         = title?.get("english")?.jsonPrimitive?.content
+                ?: title?.get("romaji")?.jsonPrimitive?.content
+                ?: "Untitled",
+            cover         = coverImage?.get("large")?.jsonPrimitive?.content
+                ?: coverImage?.get("medium")?.jsonPrimitive?.content,
+            coverColor    = coverImage?.get("color")?.jsonPrimitive?.content,
+            format        = media["format"]?.jsonPrimitive?.content,
+            episodes      = media["episodes"]?.jsonPrimitive?.int,
+            averageScore  = media["averageScore"]?.jsonPrimitive?.int,
+            year          = startDate?.get("year")?.jsonPrimitive?.int,
+            synopsis      = null,
+            genres        = media["genres"]?.jsonArray
+                ?.mapNotNull { it.jsonPrimitive.content }
+                ?.joinToString(",")
+                ?: "",
+            tier          = null,
+            elo           = 1500,
+            currentEp     = entry["progress"]?.jsonPrimitive?.int ?: 0,
+            status        = localStatus,
+            notes         = entry["notes"]?.jsonPrimitive?.content ?: "",
+            personalScore = score?.let { (it * 10).toInt() },
+            listEntryId   = entry["id"]?.jsonPrimitive?.int,
+            updatedAt     = editTime,
+            syncedAt      = editTime,
+        )
     }
 
     /**

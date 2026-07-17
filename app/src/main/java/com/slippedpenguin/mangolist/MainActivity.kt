@@ -94,6 +94,22 @@ class MainActivity : ComponentActivity() {
                     val userId   = viewer?.id ?: 0
                     val userName = viewer?.name
                     app.tokenStore.saveToken(token, userId = userId, userName = userName)
+                    if (userId > 0) {
+                        val synced = app.anilistClient.syncUserList(token, userId)
+                        if (synced != null) {
+                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                            val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            app.database.animeDao().upsertAll(merged)
+                        } else {
+                            runOnUiThread {
+                                android.widget.Toast.makeText(
+                                    this@MainActivity,
+                                    "List sync failed after login",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        }
+                    }
                 }
             }
             return
@@ -106,6 +122,22 @@ class MainActivity : ComponentActivity() {
             val userId   = viewer?.id ?: 0
             val userName = viewer?.name
             app.tokenStore.saveToken(token, userId = userId, userName = userName)
+            if (userId > 0) {
+                val synced = app.anilistClient.syncUserList(token, userId)
+                if (synced != null) {
+                    val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                    val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
+                    app.database.animeDao().upsertAll(merged)
+                } else {
+                    runOnUiThread {
+                        android.widget.Toast.makeText(
+                            this@MainActivity,
+                            "List sync failed after login",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
+            }
         }
     }
 

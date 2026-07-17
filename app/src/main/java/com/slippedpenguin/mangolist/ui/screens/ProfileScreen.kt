@@ -38,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import android.widget.Toast
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.BuildConfig
@@ -68,6 +69,8 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
     val userName by app.tokenStore.userName.collectAsState(initial = null)
+    val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
+    val userId by app.tokenStore.userId.collectAsState(initial = null)
     val entries  by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
@@ -236,8 +239,20 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        val token = app.tokenStore.accessToken
-                        // Fire-and-forget: pull viewer stats in background
+                        if (accessToken.isNullOrBlank() || userId.isNullOrBlank()) {
+                            Toast.makeText(context, "Not signed in", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+                        Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
+                        val synced = app.anilistClient.syncUserList(accessToken, userId.toInt())
+                        if (synced != null) {
+                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                            val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            app.database.animeDao().upsertAll(merged)
+                            Toast.makeText(context, "Synced ${merged.size} anime", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Sync failed", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

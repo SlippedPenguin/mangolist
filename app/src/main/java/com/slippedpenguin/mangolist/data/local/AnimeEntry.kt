@@ -46,4 +46,14 @@ data class AnimeEntry(
     val listEntryId: Int?,         // AniList MediaList id (null = never synced)
     val updatedAt: Long,           // last local edit (epoch millis)
     val syncedAt: Long?,           // last successful push (epoch millis)
-)
+) {
+    /**
+     * Returns a copy of this entry with local-only tierlist data preserved
+     * from [existing]. Used when overwriting an entry with synced data so
+     * the user's tier/elo rankings are not lost.
+     */
+    fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry = copy(
+        tier = existing?.tier ?: tier,
+        elo = existing?.elo ?: elo,
+    )
+}

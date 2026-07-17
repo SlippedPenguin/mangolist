@@ -13,6 +13,9 @@ interface AnimeDao {
     @Query("SELECT * FROM anime_entries ORDER BY updatedAt DESC")
     fun observeAll(): Flow<List<AnimeEntry>>
 
+    @Query("SELECT * FROM anime_entries ORDER BY updatedAt DESC")
+    suspend fun getAll(): List<AnimeEntry>
+
     @Query("SELECT * FROM anime_entries WHERE anilistId = :id")
     fun observeById(id: Int): Flow<AnimeEntry?>
 
