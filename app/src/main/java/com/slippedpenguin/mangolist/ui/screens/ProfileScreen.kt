@@ -239,12 +239,14 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        if (accessToken.isNullOrBlank() || userId.isNullOrBlank()) {
+                        val token = accessToken
+                        val id = userId
+                        if (token.isNullOrBlank() || id.isNullOrBlank()) {
                             Toast.makeText(context, "Not signed in", Toast.LENGTH_SHORT).show()
                             return@launch
                         }
                         Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
-                        val synced = app.anilistClient.syncUserList(accessToken, userId.toInt())
+                        val synced = app.anilistClient.syncUserList(token, id.toInt())
                         if (synced != null) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
                             val merged = synced.map { it.preserveLocalFields(existing[it.anilistId]) }
