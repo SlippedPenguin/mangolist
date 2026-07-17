@@ -43,6 +43,7 @@ import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.StatusDropped
 import com.slippedpenguin.mangolist.ui.theme.StatusPlan
@@ -71,8 +72,26 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val userName by app.tokenStore.userName.collectAsState(initial = null)
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId by app.tokenStore.userId.collectAsState(initial = null)
+    val avatarUrl by app.tokenStore.avatarUrl.collectAsState(initial = null)
     val entries  by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
+
+    var viewer by remember { mutableStateOf<com.slippedpenguin.mangolist.data.AnimeViewer?>(null) }
+    var viewerLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(accessToken) {
+        val tok = accessToken
+        if (!tok.isNullOrBlank()) {
+            viewerLoading = true
+            try {
+                viewer = app.anilistClient.getViewer(tok)
+            } finally {
+                viewerLoading = false
+            }
+        } else {
+            viewer = null
+        }
+    }
 
     val stats = remember(entries) { computeLocalStats(entries) }
 
@@ -82,9 +101,10 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        OfflineBanner()
         // Avatar + greeting
         AsyncImage(
-            model = null,  // v0.7: pull from cached viewer avatar
+            model = avatarUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier
@@ -143,6 +163,54 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         }
 
         Spacer(Modifier.height(16.dp))
+
+        // AniList viewer stats card
+        if (viewer != null || viewerLoading) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Text(
+                        text = "AniList stats",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextSecondary,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (viewerLoading) {
+                        Text(
+                            text = "Loading…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                        )
+                    } else {
+                        viewer?.let { v ->
+                            StatRow(
+                                label = "Anime count",
+                                value = v.animeCount?.toString() ?: "—",
+                            )
+                            StatRow(
+                                label = "Mean score",
+                                value = v.animeMeanScore?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                            )
+                            StatRow(
+                                label = "Episodes watched",
+                                value = v.episodesWatched?.toString() ?: "—",
+                            )
+                            StatRow(
+                                label = "Days watched",
+                                value = v.minutesWatched?.let { String.format(Locale.US, "%.1f", it / 1440.0) } ?: "—",
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+        }
 
         // Status breakdown
         if (stats.statusCounts.isNotEmpty()) {
@@ -261,6 +329,16 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sync now (v0.6)") }
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        app.tokenStore.clear()
+                        Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Sign out", color = StatusDropped) }
         }
     }
 }

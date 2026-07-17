@@ -93,7 +93,8 @@ class MainActivity : ComponentActivity() {
                     val viewer = app.anilistClient.getViewer(token)
                     val userId   = viewer?.id ?: 0
                     val userName = viewer?.name
-                    app.tokenStore.saveToken(token, userId = userId, userName = userName)
+                    val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
+                    app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
                     if (userId > 0) {
                         val result = app.anilistClient.syncUserList(token, userId)
                         if (result.entries != null) {
@@ -123,7 +124,8 @@ class MainActivity : ComponentActivity() {
             val viewer = app.anilistClient.getViewer(token)
             val userId   = viewer?.id ?: 0
             val userName = viewer?.name
-            app.tokenStore.saveToken(token, userId = userId, userName = userName)
+            val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
+            app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
             if (userId > 0) {
                 val result = app.anilistClient.syncUserList(token, userId)
                 if (result.entries != null) {

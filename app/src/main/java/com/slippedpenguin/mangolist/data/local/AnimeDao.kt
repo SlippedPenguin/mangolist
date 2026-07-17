@@ -45,4 +45,12 @@ interface AnimeDao {
 
     @Query("SELECT MAX(updatedAt) FROM anime_entries")
     suspend fun lastLocalEdit(): Long?
+
+    /**
+     * Entries that have local edits not yet pushed to AniList.
+     * `syncedAt` is null for entries never synced, or older than the last
+     * local edit for entries that were modified after their last push.
+     */
+    @Query("SELECT * FROM anime_entries WHERE syncedAt IS NULL OR updatedAt > syncedAt")
+    suspend fun getPendingSyncs(): List<AnimeEntry>
 }

@@ -7,6 +7,7 @@ import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
+import com.slippedpenguin.mangolist.util.NetworkObserver
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -32,21 +33,28 @@ import java.net.URL
  *   - getMediaDetails(id)   — anonymous rich-detail fetch (banner, synopsis,
  *                             studios, characters, relations) used by
  *                             DetailScreen.
- *   - saveEntry(token, e)   — bearer-auth stub. Returns null. Apollo Kotlin 4.x's
- *                             generated SaveMediaListEntryMutation constructor
- *                             signature is opaque from cold (no on-device codegen
- *                             dump available) and every typed-accessor variant we
- *                             tried raised 'Unresolved reference' at kotlinc. The
- *                             DetailScreen Sync button correctly degrades to its
- *                             existing "Sync failed" toast. v0.5 will replace
- *                             this with a manual OkHttp POST so response parsing
- *                             is hand-controlled and immune to codegen churn.
+ *   - saveEntry(token, e)   — bearer-auth POST to SaveMediaListEntry that
+ *                             pushes status, progress, score, and notes. It
+ *                             returns a SaveResult with the server id, timestamp
+ *                             (seconds), and stored notes.
  */
-class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
+class AniListClient(
+    @Suppress("UNUSED_PARAMETER") context: Context,
+    private val networkObserver: NetworkObserver,
+) {
 
     private val apollo: ApolloClient = ApolloClient.Builder()
         .serverUrl("https://graphql.anilist.co")
         .build()
+
+    /**
+     * Fast-fail helper. Runs [block] when online, otherwise returns the
+     * supplied [default] sentinel. This avoids long DNS timeouts and gives
+     * callers a predictable offline result.
+     */
+    private inline fun <T> withNetwork(default: T, block: () -> T): T {
+        return if (networkObserver.isCurrentlyOnline()) block() else default
+    }
 
     /**
      * Search AniList for anime matching [query]. Returns up to 12 results
@@ -55,6 +63,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      */
     suspend fun search(query: String): List<AnimeEntry> {
         if (query.isBlank()) return emptyList()
+        return withNetwork(emptyList()) {
         val response = try {
             apollo.query(SearchAnimeQuery(search = query)).execute()
         } catch (e: Exception) {
@@ -90,6 +99,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 syncedAt     = null,
             )
         }
+        }
     }
 
     /**
@@ -99,28 +109,30 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      */
     suspend fun getViewer(token: String): AnimeViewer? {
         if (token.isBlank()) return null
-        val authClient = ApolloClient.Builder()
-            .serverUrl("https://graphql.anilist.co")
-            .addHttpHeader("Authorization", "Bearer $token")
-            .build()
-        return try {
-            val response = authClient.query(GetViewerQuery()).execute()
-            val v = response.data?.Viewer ?: return null
-            AnimeViewer(
-                id = v.id,
-                name = v.name,
-                avatarLarge = v.avatar?.large,
-                avatarMedium = v.avatar?.medium,
-                animeCount = v.statistics?.anime?.count,
-                animeMeanScore = v.statistics?.anime?.meanScore,
-                episodesWatched = v.statistics?.anime?.episodesWatched,
-                minutesWatched = v.statistics?.anime?.minutesWatched,
-            )
-        } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "getViewer failed", e)
-            null
-        } finally {
-            authClient.close()
+        return withNetwork(null) {
+            val authClient = ApolloClient.Builder()
+                .serverUrl("https://graphql.anilist.co")
+                .addHttpHeader("Authorization", "Bearer $token")
+                .build()
+            return try {
+                val response = authClient.query(GetViewerQuery()).execute()
+                val v = response.data?.Viewer ?: return null
+                AnimeViewer(
+                    id = v.id,
+                    name = v.name,
+                    avatarLarge = v.avatar?.large,
+                    avatarMedium = v.avatar?.medium,
+                    animeCount = v.statistics?.anime?.count,
+                    animeMeanScore = v.statistics?.anime?.meanScore,
+                    episodesWatched = v.statistics?.anime?.episodesWatched,
+                    minutesWatched = v.statistics?.anime?.minutesWatched,
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "getViewer failed", e)
+                null
+            } finally {
+                authClient.close()
+        }
         }
     }
 
@@ -135,7 +147,8 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     suspend fun syncUserList(token: String, userId: Int): SyncResult {
         if (token.isBlank()) return SyncResult(null, "No access token. Please log in again.")
         if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
-        return try {
+        return withNetwork(SyncResult(null, "No internet connection.")) {
+        try {
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
             val payload = buildJsonObject {
                 put(
@@ -202,9 +215,9 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 }
 
             // Surface GraphQL errors even when HTTP is 200.
-            val errors = root["errors"]?.jsonArray
+            val errors = root["errors"] as? kotlinx.serialization.json.JsonArray
             if (errors != null && errors.isNotEmpty()) {
-                val msg = errors.joinToString(", ") { (it as? JsonObject)?.get("message")?.jsonPrimitive?.content ?: "GraphQL error" }
+                val msg = errors.joinToString(", ") { ((it as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "GraphQL error" }
                 android.util.Log.w("AniListClient", "syncUserList GraphQL errors: $msg")
                 return SyncResult(null, msg)
             }
@@ -224,7 +237,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 }
             val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                 ?.filterIsInstance<JsonObject>()
-                ?.filter { it["isCustomList"]?.jsonPrimitive?.boolean != true }
+                ?.filter { (it["isCustomList"] as? kotlinx.serialization.json.JsonPrimitive)?.boolean != true }
                 ?.flatMap { list ->
                     (list["entries"] as? kotlinx.serialization.json.JsonArray)
                         ?.filterIsInstance<JsonObject>()
@@ -236,6 +249,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "syncUserList failed", e)
             SyncResult(null, e.message ?: "Unknown sync error")
+        }
         }
     }
 
@@ -306,11 +320,12 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      */
     suspend fun getMediaDetails(id: Int): MediaDetails? {
         if (id <= 0) return null
-        val response = try {
-            apollo.query(GetMediaDetailsQuery(id = id)).execute()
-        } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "getMediaDetails failed for $id", e)
-            return null
+        return withNetwork(null) {
+            val response = try {
+                apollo.query(GetMediaDetailsQuery(id = id)).execute()
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "getMediaDetails failed for $id", e)
+                return null
         }
         val m = response.data?.Media ?: return null
         val cf = m.animeCardFields
@@ -370,6 +385,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             characters    = characters,
             relations     = relations,
         )
+        }
     }
 
     /**
@@ -381,38 +397,40 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      */
     suspend fun exchangeCodeForToken(code: String): String? {
         if (code.isBlank()) return null
-        return try {
-            // AniList's token endpoint expects a JSON body per the official docs.
-            // client_id must be sent as an integer (Laravel Passport rejects the
-            // string form). redirect_uri must match the registered URI exactly.
-            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-            val payload = buildJsonObject {
-                put("grant_type", "authorization_code")
-                put("client_id", BuildConfig.ANILIST_CLIENT_ID.toInt())
-                put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
-                put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
-                put("code", code)
-            }
-            val body = json.encodeToString(JsonObject.serializer(), payload)
-
-            val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Accept", "application/json")
-            conn.doOutput = true
-            conn.outputStream.use { it.write(body.toByteArray()) }
-
-            if (conn.responseCode !in 200..299) {
-                val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}: $errorBody")
-                return null
-            }
-            val responseBody = conn.inputStream.bufferedReader().readText()
-            val root = json.parseToJsonElement(responseBody).jsonObject
-            root["access_token"]?.jsonPrimitive?.content
-        } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "exchangeCodeForToken failed", e)
-            null
+        return withNetwork(null) {
+            try {
+                // AniList's token endpoint expects a JSON body per the official docs.
+                // client_id must be sent as an integer (Laravel Passport rejects the
+                // string form). redirect_uri must match the registered URI exactly.
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val payload = buildJsonObject {
+                    put("grant_type", "authorization_code")
+                    put("client_id", BuildConfig.ANILIST_CLIENT_ID.toInt())
+                    put("client_secret", BuildConfig.ANILIST_CLIENT_SECRET)
+                    put("redirect_uri", BuildConfig.ANILIST_REDIRECT_URI)
+                    put("code", code)
+                }
+                val body = json.encodeToString(JsonObject.serializer(), payload)
+    
+                val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(body.toByteArray()) }
+    
+                if (conn.responseCode !in 200..299) {
+                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}: $errorBody")
+                    return null
+                }
+                val responseBody = conn.inputStream.bufferedReader().readText()
+                val root = json.parseToJsonElement(responseBody).jsonObject
+                root["access_token"]?.jsonPrimitive?.content
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "exchangeCodeForToken failed", e)
+                null
+        }
         }
     }
 
@@ -426,60 +444,76 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
      * Mappings:
      *   - status → AniList MediaListStatus enum (plan→PLANNING, watching→CURRENT, etc.)
      *   - personalScore / 10.0 → score Float (0-10 scale)
+     *   - notes → String (empty string clears notes on AniList)
      *   - listEntryId non-null → update; null → create new
      *
-     * Returns the AniList MediaList id (new or existing) on success, null on failure.
+     * Returns a [SaveResult] with the AniList MediaList id, server updatedAt
+     * (seconds), and server notes on success; null on failure.
      */
-    suspend fun saveEntry(token: String, entry: AnimeEntry): Int? {
+    suspend fun saveEntry(token: String, entry: AnimeEntry): SaveResult? {
         if (token.isBlank()) return null
-        return try {
-            val anilistStatus = when (entry.status) {
-                "plan"      -> "PLANNING"
-                "watching"  -> "CURRENT"
-                "completed" -> "COMPLETED"
-                "dropped"   -> "DROPPED"
-                "paused"    -> "PAUSED"
-                "repeating" -> "REPEATING"
-                else        -> "CURRENT"
-            }
-            val variables = buildJsonObject {
-                entry.listEntryId?.let { put("id", it) }
-                put("mediaId", entry.anilistId)
-                put("status", anilistStatus)
-                put("progress", entry.currentEp)
-                entry.personalScore?.let { put("score", it / 10.0) }
-            }
-            val payload = buildJsonObject {
-                put(
-                    "query",
-                    "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$score:Float,\$progress:Int)" +
-                    "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,score:\$score,progress:\$progress)" +
-                    "{id}}"
+        return withNetwork(null) {
+            try {
+                val anilistStatus = when (entry.status) {
+                    "plan"      -> "PLANNING"
+                    "watching"  -> "CURRENT"
+                    "completed" -> "COMPLETED"
+                    "dropped"   -> "DROPPED"
+                    "paused"    -> "PAUSED"
+                    "repeating" -> "REPEATING"
+                    else        -> "CURRENT"
+                }
+                val variables = buildJsonObject {
+                    entry.listEntryId?.let { put("id", it) }
+                    put("mediaId", entry.anilistId)
+                    put("status", anilistStatus)
+                    put("progress", entry.currentEp)
+                    entry.personalScore?.let { put("score", it / 10.0) }
+                    put("notes", entry.notes)
+                }
+                val payload = buildJsonObject {
+                    put(
+                        "query",
+                        "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$score:Float,\$progress:Int,\$notes:String)" +
+                        "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,score:\$score,progress:\$progress,notes:\$notes)" +
+                        "{id updatedAt notes}}"
+                    )
+                    put("variables", variables)
+                }
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val body = json.encodeToString(JsonObject.serializer(), payload)
+    
+                val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+                conn.outputStream.use { it.write(body.toByteArray()) }
+    
+                if (conn.responseCode !in 200..299) {
+                    android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}")
+                    return null
+                }
+                val responseBody = conn.inputStream.bufferedReader().readText()
+                val root = json.parseToJsonElement(responseBody).jsonObject
+                val saveNode = root["data"]?.jsonObject?.get("SaveMediaListEntry")?.jsonObject ?: return null
+                val id = (saveNode["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null
+                val updatedAtSeconds = (saveNode["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
+                val notesElement = saveNode["notes"]
+                val returnedNotes = when (notesElement) {
+                    is kotlinx.serialization.json.JsonNull -> null
+                    is kotlinx.serialization.json.JsonPrimitive -> notesElement.content
+                    else -> null
+                }
+                SaveResult(
+                    id = id,
+                    updatedAtSeconds = updatedAtSeconds,
+                    notes = returnedNotes,
                 )
-                put("variables", variables)
-            }
-            val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-            val body = json.encodeToString(JsonObject.serializer(), payload)
-
-            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Authorization", "Bearer $token")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
-            conn.outputStream.use { it.write(body.toByteArray()) }
-
-            if (conn.responseCode !in 200..299) {
-                android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}")
-                return null
-            }
-            val responseBody = conn.inputStream.bufferedReader().readText()
-            val root = json.parseToJsonElement(responseBody).jsonObject
-            root["data"]?.jsonObject
-                ?.get("SaveMediaListEntry")?.jsonObject
-                ?.get("id")?.jsonPrimitive?.int
-        } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "saveEntry failed", e)
-            null
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "saveEntry failed", e)
+                null
+        }
         }
     }
 
@@ -490,7 +524,8 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     suspend fun getAiringSchedule(): List<AiringSlot> {
         val now = System.currentTimeMillis() / 1000
         val week = now + 7 * 86400
-        return try {
+        return withNetwork(emptyList()) {
+        try {
             val variables = buildJsonObject {
                 put("airingAtGreater", now.toInt())
                 put("airingAtLesser", week.toInt())
@@ -537,13 +572,9 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             android.util.Log.w("AniListClient", "getAiringSchedule failed", e)
             emptyList()
         }
+        }
     }
 }
-
-// Helpers `toMediaListStatus` + `tierToScore` and `MediaListStatus` import were
-// removed in v0.4.4 since the stubbed saveEntry no longer maps local status /
-// tier to AniList's enums. They come back in v0.5 when saveEntry is rebuilt
-// against the manual OkHttp POST.
 
 /*
  * Rich-detail view of one anime, fetched by AniListClient.getMediaDetails.
@@ -621,4 +652,16 @@ data class AiringSlot(
 data class SyncResult(
     val entries: List<AnimeEntry>?,
     val error: String?,
+)
+
+/**
+ * Result wrapper for a successful SaveMediaListEntry mutation.
+ * `updatedAtSeconds` is the server timestamp in seconds (multiply by 1000
+ * for local millis). `notes` is the server-stored value, which may differ
+ * from the local draft if AniList normalizes or truncates it.
+ */
+data class SaveResult(
+    val id: Int,
+    val updatedAtSeconds: Long?,
+    val notes: String?,
 )

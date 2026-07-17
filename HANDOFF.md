@@ -2,9 +2,17 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest release:** [v0.7.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.7.4)  
+> **Latest documented release:** [v0.7.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.7.4)  
+> **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
+
+> **Doc-pinning note:** This doc was rewritten so it matches the actual build.
+> The three items previously listed under *"What's missing (high priority)"*
+> — two-way sync, Detail-screen status/episode/score/notes management, and
+> the Tierlist UI — have shipped since v0.7.4. They're documented under
+> *What works now* below, with a quick-reference delta table at the end.
+> *What's missing* now lists the *real* open work as of this rewrite.
 
 ---
 
@@ -17,24 +25,25 @@ mangolist/
 │   │   ├── AnimeApp.kt              # Application class (Room DB, TokenStore, AniListClient singletons)
 │   │   ├── MainActivity.kt          # Single-activity host, OAuth redirect handler, auto-sync on login
 │   │   ├── data/
-│   │   │   ├── AniListClient.kt     # GraphQL/API wrapper (search, getViewer, syncUserList, saveEntry, etc.)
+│   │   │   ├── AniListClient.kt     # GraphQL/API wrapper (search, getViewer, syncUserList, saveEntry, getMediaDetails, getAiringSchedule, exchangeCodeForToken)
 │   │   │   ├── TokenStore.kt        # DataStore-backed OAuth token + userId + userName persistence
-│   │   │   ├── EloEngine.kt         # Tierlist ELO calculation
+│   │   │   ├── EloEngine.kt         # Tierlist ELO calculation (K=32, INITIAL_ELO=1500, clamp 900–2100)
 │   │   │   └── local/
-│   │   │       ├── AnimeEntry.kt    # Room entity (all animanga state)
-│   │   │       └── AnimeDao.kt      # Room DAO (upsertAll, getAll, observeAll, etc.)
+│   │   │       ├── AnimeEntry.kt    # Room entity (all animanga state + tier/elo/sync metadata)
+│   │   │       ├── AnimeDao.kt      # Room DAO (observeAll / observeById / observeByTier / upsertAll / update)
+│   │   │       └── AnimeDatabase.kt # Room holder (v2 schema, destructive migration)
 │   │   └── ui/
-│   │       ├── Navigation.kt        # NavHost + bottom nav (Search, Tierlist, Profile, Airing)
+│   │       ├── Navigation.kt        # NavHost + bottom nav (Watch, Add, Tiers, Airing, Profile)
 │   │       ├── screens/
-│   │       │   ├── ProfileScreen.kt # Stats, login/sync UI
-│   │       │   ├── DetailScreen.kt  # Rich anime detail view
-│   │       │   ├── SearchScreen.kt  # Search + results
-│   │       │   ├── TierlistScreen.kt
-│   │       │   └── AiringScreen.kt  # Weekly airing schedule
-│   │       ├── components/          # Shared UI widgets
-│   │       └── theme/               # MangoTheme, colors, typography
-│   └── graphql/                     # .graphql queries + fragments (Apollo codegen)
-│       └── com/slippedpenguin/mangolist/queries.graphql
+│   │       │   ├── ProfileScreen.kt # AniHyou-parity stats (local-computed) + login/sync UI
+│   │       │   ├── DetailScreen.kt  # Hero/banner/metadata/synopsis/characters/relations + tracking card
+│   │       │   ├── WatchlistScreen.kt # Flat list of all Room entries
+│   │       │   ├── AddScreen.kt     # Debounced AniList search → +Add
+│   │       │   ├── TiersScreen.kt   # Long-press → tier-picker sheet → VS-mode (3 Elo matches)
+│   │       │   └── AiringScreen.kt  # 7-day schedule, grouped by day, countdown
+│   │       ├── components/          # AnimeCard, EloBadge, StatusPill (shared)
+│   │       └── theme/               # MangoTheme (dark-only), tier/status color maps
+│   └── graphql/com/slippedpenguin/mangolist/queries.graphql  # Apollo queries + SaveMediaListEntry mutation
 ├── .github/workflows/release.yml    # CI: builds APK on tag push, attaches to GitHub Release
 ├── build.gradle.kts                 # Root build config
 ├── app/build.gradle.kts             # App build config (AGP 8.7.3, Apollo, Room, etc.)
@@ -44,11 +53,11 @@ mangolist/
 
 ---
 
-## What works now (as of v0.7.4)
+## What works now
 
 ### OAuth Login
 - Authorization code grant flow via Chrome Custom Tabs
-- Token exchange at `https://anilist.co/api/v2/oauth/token` (JSON body, client_id as int)
+- Token exchange at `https://anilist.co/api/v2/oauth/token` (JSON body, client_id as Int)
 - Redirect URI: `com.slippedpenguin.mangolist://callback` (scheme+host format)
 - Token persisted in DataStore (`token_prefs`)
 - `getViewer()` fetches and stores userId + userName
@@ -56,25 +65,73 @@ mangolist/
 ### List Sync (one-way: AniList → local)
 - **Auto-sync on login:** After OAuth succeeds, `MainActivity` calls `syncUserList(token, userId)` and upserts into Room
 - **Manual sync:** "Sync now" button on ProfileScreen
-- Merges with existing entries, preserving local `tier` and `elo`
-- Filters out custom AniList lists
-- Maps AniList statuses: `CURRENT→watching, PLANNING→plan, COMPLETED→completed, etc.`
-- Maps scores: AniList 0-100 → local 0-100
+- Merges with existing entries, preserving local `tier` and `elo` via `preserveLocalFields`
+- Filters out custom AniList lists via `isCustomList` flag
+- Maps AniList statuses: `CURRENT→watching, PLANNING→plan, COMPLETED→completed, DROPPED→dropped, PAUSED→paused, REPEATING→repeating`
+- Maps scores: AniList `MediaList.score` (0–10 Float, 0.5-step increments) × 10 → local `personalScore` (0–100, display ÷10 with one decimal in the score pill)
 - Uses hand-rolled `HttpURLConnection` POST (not Apollo) for the sync query
+- Returns `SyncResult(entries, error)` so callers can surface the actual error message instead of a generic toast
 
 ### Search
 - `AniListClient.search(query)` uses Apollo `SearchAnimeQuery`
-- Results displayed in SearchScreen
+- `AddScreen` debounces input 350ms before firing
+- Results render as `SearchResultRow` (cover + title + year/eps + "+ Add" / "Open" button)
+- Tapping `+ Add` upserts into Room only if the row is genuinely new (avoids clobbering existing tier/elo/notes via REPLACE-on-conflict)
 
 ### Detail View
 - `AniListClient.getMediaDetails(id)` uses Apollo `GetMediaDetailsQuery`
-- Shows banner, synopsis, studios, characters, relations
+- Shows: hero banner + cover overlay, title (English primary, romaji secondary), metadata pills (Status / Format / Season / Episodes / Duration / Score), genres chip strip, expandable synopsis (HTML stripped via `HtmlCompat`), studios, characters (top 15 with role labels), related anime (clickable, navigates to a new Detail)
+- Mapping is done into a stable `MediaDetails` Kotlin class so future codegen migration doesn't ripple to the UI
 
-### Profile Stats
-- Local stats computed from Room entries (episodes watched, days watched, mean scores, status/tier/genre/format/year breakdowns)
+### Detail Screen — Tracking (Status / Episode / Score / Notes / Tier)
+- **`StatusPickerDialog`** — AlertDialog listing the six statuses. Tap a row to commit; the active status gets a "current" marker.
+- **`EpisodeRow`** — `−`/`+` counters. Tap `+` past the cap and the entry auto-completes in the same write (`status = "completed"`), so the StatusPill flips immediately. If `−` later drops `currentEp` below the cap while the entry is *still* `status = "completed"` (regardless of whether the completion was set by auto-complete or manually via `StatusPickerDialog`), it auto-flips back to `status = "watching"` — avoids the "stuck completed at one fewer episode" case.
+- **`ScorePickerDialog`** — 1–10 star grid; tapping a star sets `personalScore` to that step's value (step × 10), tapping the same active star clears the rating (`null`). Stars fill reactively based on `selected >= step × 10` (no animation). Also has an explicit "Clear rating" button at the bottom.
+- **`NotesDialog`** — multi-line `OutlinedTextField`, eight visible lines, trims trailing whitespace on save.
+- **`TierPickerDialog`** — same AlertDialog shape for S/A/B/C/D + an "Unranked" reset. Resetting tier resets Elo to `EloEngine.INITIAL_ELO = 1500`.
+- **All five sub-edits are LOCAL writes only** (status, episode, score, notes, tier). They don't push to AniList until the user manually presses "Sync to AniList" (see *Two-way sync* below; tier is local-only by design, so it's never pushed). Auto-push on dirty edit is still an open work item.
+
+### Two-way Sync (Push to AniList)
+- `AniListClient.saveEntry(token, entry)` is fully wired to the **"Sync to AniList" button** on `DetailScreen.TrackingCard`
+- Hand-rolled `HttpURLConnection` POST to the `SaveMediaListEntry` GraphQL mutation (Apollo codegen for mutations proved opaque at kotlinc; same workaround as `syncUserList`)
+- Mappings:
+  - status → AniList `MediaListStatus` enum (`watching` → `CURRENT`, `plan` → `PLANNING`, etc.)
+  - `personalScore / 10.0` → score Float (0–10 scale)
+  - `notes` → String (empty string clears notes on AniList)
+  - `listEntryId` non-null → update; null → create new
+- On success: returns `SaveResult(id, updatedAtSeconds, notes)`; caller writes back `listEntryId`, server `updatedAtSeconds` (×1000), and server `notes` into Room so the next round-trip hits the update path and notes round-trip cleanly
+- On failure: surfaces an in-screen feedback chip (auto-dismisses after ~4s)
+- **Auto-push:** `SyncWorker` (WorkManager) drains entries whose `updatedAt > syncedAt` (or `syncedAt IS NULL`) whenever the network is available. It is enqueued on app start and after every local edit in `DetailScreen`. Exponential backoff (10s base) on failure.
+- The manual "Sync to AniList" button is no longer gated on `tier != null` — unranked entries can now sync progress/score/notes.
+
+### Profile Screen
+- Avatar loaded from cached `AnimeViewer.avatarMedium` / `avatarLarge` URL stored in `TokenStore`
+- Greeting with `userName` and local list count
+- **Local stats card:** Episodes watched, days watched (format-aware duration estimates), community mean score, personal mean score
+- **AniList viewer stats card:** anime count, mean score, episodes watched, days watched (fetched live via `AniListClient.getViewer`)
+- Status / tier / genre / format / year breakdowns (local)
+- Sign-in CTA when not authenticated; "Sync now" and "Sign out" buttons when authenticated
+
+### Tierlist UI
+- `TiersScreen` is a vertical rail of five rows (S / A / B / C / D) plus an Unranked bucket. Each row sorted by Elo descending.
+- `TierHeader` shows tier letter (tier-tinted), count badge, and live Elo range (`1850–2050` etc.) so the user has a quick sense of where their collection sits.
+- **Long-press any `AnimeCard`** → `ModalBottomSheet` with the five tier options (plus Cancel) and a per-row hint (median Elo if the target tier has ≥3 entries, else "vs-mode skipped · N in tier" or "(empty · instant rank)").
+- Picking a target tier:
+  - If the target tier has **≥ 3 opponents**, open `VsModeDialog`: three rounds of head-to-head tapping, each driven by `EloEngine.update`.
+  - Each pick highlights the winner for ~900ms then advances.
+  - Otherwise (target tier empty or < 3 entries) commit immediately with `elo = INITIAL_ELO`.
+- After 3 matches, the root entry gets `tier = target, elo = finalElo`; opponent entries with mutated elos are written back in the same flow (sequential `dao.update` calls — not wrapped in a Room `@Transaction`).
 
 ### Airing Schedule
-- `AniListClient.getAiringSchedule()` fetches next 7 days of airing anime
+- `AniListClient.getAiringSchedule()` fetches next 7 days of airing anime (max 50 slots)
+- `AiringScreen` groups by day (Today / Tomorrow / `EEE, MMM d`), shows a per-card countdown ("in 3d 12h" / "in 12h 30m" / "Airing now"), and ticks every 60s so the countdown stays fresh
+- Tap → `navController.navigate("detail/$animeId")`
+
+### Offline Mode
+- `NetworkObserver` exposes a reactive `isOnline: Flow<Boolean>` and a synchronous `isCurrentlyOnline()` check backed by `ConnectivityManager`.
+- `AniListClient` short-circuits every network call when offline, returning predictable empty/null results instead of hanging on DNS timeouts.
+- `DetailScreen` falls back to a `MediaDetails` built from the cached `AnimeEntry` when `getMediaDetails()` returns null, so locally saved anime remain viewable offline.
+- `OfflineBanner` is shown on `DetailScreen`, `AddScreen`, `AiringScreen`, and `ProfileScreen` whenever the device loses connectivity.
 
 ### CI/CD
 - Push a `v*` tag → GitHub Actions builds release APK → uploads to GitHub Release
@@ -82,7 +139,25 @@ mangolist/
 
 ---
 
-## Bugs fixed this session
+## What's missing (next priorities)
+
+### High priority
+
+### Medium priority
+
+1. **Pull-to-refresh** on `WatchlistScreen`, `TiersScreen`, `AiringScreen`, and the stats section of `ProfileScreen`. None of these currently wrap their content in a `PullToRefreshBox` (or `pullRefresh` modifier). Today only `Profile`'s "Sync now" button explicitly re-fetches from AniList. Airing's slot data only refreshes on screen-load.
+
+2. **Favorites / collection view** — a tab or surface for marking favorites across the user's list. Currently no favorites concept.
+
+### Low priority
+
+4. **Push notifications** for airing episodes (FCM / WorkManager scheduling per `AiringSlot.airingAt`).
+5. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
+6. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
+
+---
+
+## Bugs fixed (historical table — pre-v0.8)
 
 | Version | Issue | Root Cause | Fix |
 |---------|-------|-----------|-----|
@@ -90,6 +165,7 @@ mangolist/
 | v0.7.1 | "Sync failed" with no details | `syncUserList` returned null silently | Added `SyncResult` return type with error messages |
 | v0.7.2 | HTTP 400 on sync | Raw string `\$userId` produced literal `\` instead of `$` | Changed to `${'$'}userId` (safe `$` escape in triple-quoted strings) |
 | v0.7.4 | "Unexpected JSON off or on" crash | `.jsonPrimitive`/`.jsonObject`/`.jsonArray` extensions throw on `JsonNull` | Replaced ALL with safe casts (`as? JsonPrimitive`, `as? JsonObject`, `as? JsonArray`) |
+| v0.8+ (working tree) | Notes not pushed to AniList | `notes` omitted from `saveEntry` mutation variables/query string | Added `notes` to `SaveMediaListEntry`; `saveEntry` now returns `SaveResult(id, updatedAt, notes)` and caller writes back server timestamp |
 
 ### Critical Kotlin knowledge for this project
 
@@ -99,45 +175,27 @@ mangolist/
 
 ---
 
-## What's missing (next priorities)
+## v0.8+ deltas (since v0.7.4)
 
-### High priority — AniHyou parity features
+Quick reference for what's new since the last documented release.
 
-1. **Two-way sync (push to AniList):**
-   - `saveEntry()` in `AniListClient.kt` already exists and works (hand-rolled POST to `SaveMediaListEntry` mutation)
-   - But it's **not wired to any UI action** — DetailScreen's sync button calls it but the result is unused
-   - Need: when user changes status, episode progress, or score in the app → call `saveEntry()` → update local DB with the returned `listEntryId`
-   - Need: mark entry as dirty when user edits locally, push on save
+| Area | v0.7.4 | v0.8+ |
+|---|---|---|
+| Two-way sync | `saveEntry` stub (Apollo codegen refused to compile) | Hand-rolled JSON POST, fully wired to `DetailScreen` "Sync to AniList" button |
+| Detail tracking | Plain read-only detail | Status / Episode / Score / Notes / Tier dialogs, auto-complete on episode cap, auto-de-promote on undo, ScorePickerDialog star grid, NotesDialog text editor |
+| Tierlist | Flat "tier + Elo" list | `TiersScreen.kt`: long-press → tier-picker sheet → `VsModeDialog` (3 head-to-head Elo matches, 900ms reveal, writes back to both root + opponents) |
+| Tier reassignment | Manual set would clobber Elo inconsistently | Tier reset always sets `elo = INITIAL_ELO`; VS-mode rounds adjust elos in-place across root + opponents |
+| Sync errors | "Sync failed" toast | `SyncResult.entries / error` → readable message (`HTTP 401`, `HTTP 500: ...`, parsed `GraphQL errors`) |
+| JSON parsing | `.jsonPrimitive`/`jsonObject` throws on `JsonNull` | Safe casts throughout (already in v0.7.4, carried forward) |
+| ProfileScreen | Placeholder avatar + local stats only | Cached avatar URL, live AniList viewer stats card, sign-out button |
+| Auto-push | Manual "Sync to AniList" only | `SyncWorker` drains `updatedAt > syncedAt` entries automatically; Sync button no longer tier-gated |
 
-2. **Anime status management on DetailScreen:**
-   - Dropdown/picker for status (Plan to Watch, Watching, Completed, Dropped, Paused, Repeating)
-   - Increment/decrement episode counter
-   - Score slider (0-10 stars)
-   - Notes field
-   - "Finish" action: sets `currentEp = episodes`, `status = completed`, pushes to AniList
-
-3. **Tierlist UI:**
-   - Current `TierlistScreen.kt` exists but needs fleshing out
-   - Drag-and-drop between tiers (S/A/B/C/D)
-   - Visual tier rows with anime cards
-   - Persist tier changes locally
-
-4. **ProfileScreen polish:**
-   - Show cached viewer avatar (data is available from `getViewer` but not displayed)
-   - Show AniList stats (anime count, mean score, episodes watched) from the viewer response
-   - Sign-out / clear-token button
-
-### Medium priority
-
-5. **Favorites / collection view**
-6. **Offline mode** (show cached data when no network)
-7. **Pull-to-refresh** on all list screens
-
-### Low priority
-
-8. **Push notifications** for airing episodes
-9. **Manga support** (currently ANIME-only)
-10. **Play Store release** (needs release keystore, not debug)
+**Code anchors** for navigating the v0.8+ work:
+- `AniListClient.saveEntry` — the hand-rolled POST in `data/AniListClient.kt` (around the "Push a single AnimeEntry edit back to AniList" doc-comment).
+- `TiersScreen.startVsMode` / `pickInMatch` / `cancelVsMode` — long-press → sheet → VS-mode flow.
+- `DetailScreen.TrackingCard` and its four sub-dialogs (`StatusPickerDialog`, `TierPickerDialog`, `NotesDialog`, `ScorePickerDialog`) — all in `ui/screens/DetailScreen.kt`.
+- `EpisodeRow` `onPlus` / `onMinus` — the auto-complete and auto-de-promote logic.
+- `SyncedResult` and the merge logic in `MainActivity.handleAuthRedirect` (using `entry.preserveLocalFields(existing)` to keep tier/elo across pull syncs).
 
 ---
 
@@ -158,7 +216,7 @@ git push origin vX.Y.Z
 gh run list --repo SlippedPenguin/mangolist --workflow=release.yml --limit 1 --json status,conclusion,url
 
 # 5. Once green, release is at:
-# https://github.com/SlippedPenguin/mangolist/releases/tag/vX.Y.Z
+# https://github.com/Slippedpenguin/mangolist/releases/tag/vX.Y.Z
 ```
 
 **Important:** The CI injects `anilist.client.secret` from GitHub Secrets. The local `local.properties` has a **different** client secret for the user's AniList dev app. Both APKs (local debug build and CI release build) work because they use different AniList client registrations.
@@ -168,7 +226,9 @@ gh run list --repo SlippedPenguin/mangolist --workflow=release.yml --limit 1 --j
 ## Known gotchas
 
 - **No local gradlew script.** Builds only work in CI (via `setup-gradle@v4`) or in Android Studio (which generates the wrapper). Don't try `./gradlew` from CLI.
-- **Apollo codegen is fragile for mutations.** `SaveMediaListEntry` uses hand-rolled JSON POST; only queries (`search`, `getViewer`, `getMediaDetails`) use Apollo. The `syncUserList` query also uses hand-rolled POST to avoid fragment-spread codegen issues.
+- **Apollo codegen is fragile for mutations.** `SaveMediaListEntry` uses hand-rolled JSON POST; only queries (`search`, `getViewer`, `getMediaDetails`) use Apollo. The `syncUserList` and `saveEntry` paths also use hand-rolled POST to avoid fragment-spread codegen issues.
 - **`exchangeCodeForToken` sends `client_id` as Int**, not String. AniList's Laravel Passport rejects the string form.
 - **User must update AniList Developer settings** to match `com.slippedpenguin.mangolist://callback` — if they change it back to the scheme-only form, login will break again.
 - **`AnimeEntry.preserveLocalFields(existing)`** keeps tier/elo during sync — always use this when upserting synced data.
+- **Sync button is gated on `tier != null`** — open question whether this is intentional (see *What's missing → #2*).
+- **`saveEntry` does not push `notes`** — known bug, see *What's missing → #3*.

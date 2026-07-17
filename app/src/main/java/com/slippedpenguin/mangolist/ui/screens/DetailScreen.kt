@@ -68,6 +68,7 @@ import com.slippedpenguin.mangolist.data.MediaDetails
 import com.slippedpenguin.mangolist.data.RelationCard
 import com.slippedpenguin.mangolist.data.local.AnimeDao
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.components.StatusPill
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BgDeep
@@ -76,6 +77,7 @@ import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextPrimary
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.tierColor
+import com.slippedpenguin.mangolist.work.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -114,8 +116,14 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     val entry by dao.observeById(anilistId).collectAsState(initial = null)
     val token by app.tokenStore.accessToken.collectAsState(initial = null)
 
-    var details         by remember { mutableStateOf<MediaDetails?>(null) }
+    var fetchedDetails  by remember { mutableStateOf<MediaDetails?>(null) }
     var detailsLoaded   by remember { mutableStateOf(false) }
+
+    // If the network fetch failed or we're offline, fall back to a MediaDetails
+    // built from the cached local entry so the screen is still usable. This is
+    // computed reactively so edits to the entry update the UI without re-triggering
+    // the network call.
+    val details = fetchedDetails ?: entry?.let { buildFallbackDetails(it) }
     var showTierSheet   by remember { mutableStateOf(false) }
     var showStatusSheet by remember { mutableStateOf(false) }
     var showNotesDialog by remember { mutableStateOf(false) }
@@ -126,7 +134,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
 
     LaunchedEffect(anilistId) {
         detailsLoaded = false
-        details = app.anilistClient.getMediaDetails(anilistId)
+        fetchedDetails = app.anilistClient.getMediaDetails(anilistId)
         detailsLoaded = true
     }
 
@@ -152,22 +160,20 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     val requestSync: () -> Unit = {
         scope.launch {
             val e = entry ?: return@launch
-            if (e.tier == null) {
-                syncFeedback = "Pick a tier before syncing." to true
-                return@launch
-            }
             val tok = token
             if (tok.isNullOrBlank()) {
                 syncFeedback = "Sign in on the Profile tab first." to true
                 return@launch
             }
-            val newId = app.anilistClient.saveEntry(tok, e)
-            if (newId != null) {
+            val result = app.anilistClient.saveEntry(tok, e)
+            if (result != null) {
+                val serverMillis = result.updatedAtSeconds?.let { it * 1000L } ?: System.currentTimeMillis()
                 dao.update(
                     e.copy(
-                        listEntryId = newId,
-                        syncedAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis(),
+                        listEntryId = result.id,
+                        notes = result.notes ?: e.notes,
+                        syncedAt = serverMillis,
+                        updatedAt = serverMillis,
                     )
                 )
                 syncFeedback = "Synced to AniList ✓" to false
@@ -183,6 +189,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             .background(BgDeep),
     ) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item { OfflineBanner() }
             item { HeroSection(details, entry) }
             item { TitleBlock(details, entry, detailsLoaded) }
             item { MetadataFlowRow(details) }
@@ -314,6 +321,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                             updatedAt = System.currentTimeMillis(),
                         )
                     )
+                            SyncWorker.enqueue(context)
                 }
             },
             onDismiss = { showNotesDialog = false },
@@ -331,6 +339,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                             updatedAt = System.currentTimeMillis(),
                         )
                     )
+                            SyncWorker.enqueue(context)
                 }
             },
             onDismiss = { showScorePicker = false },
@@ -782,10 +791,12 @@ private fun TrackingCard(
                                 updatedAt = now,
                             )
                         )
+                            SyncWorker.enqueue(context)
                     } else {
                         dao.update(
                             e.copy(currentEp = prev, updatedAt = now)
                         )
+                            SyncWorker.enqueue(context)
                     }
                 }
             },
@@ -804,10 +815,12 @@ private fun TrackingCard(
                                 updatedAt = now,
                             )
                         )
+                            SyncWorker.enqueue(context)
                     } else {
                         dao.update(
                             e.copy(currentEp = next, updatedAt = now)
                         )
+                            SyncWorker.enqueue(context)
                     }
                 }
             },
@@ -848,7 +861,6 @@ private fun TrackingCard(
         Button(
             onClick = onSync,
             modifier = Modifier.fillMaxWidth(),
-            enabled = e.tier != null,
             colors = ButtonDefaults.buttonColors(containerColor = Accent),
         ) {
             Text("Sync to AniList", fontWeight = FontWeight.SemiBold)
@@ -917,7 +929,10 @@ private fun TierPickerDialog(
                                 elo = EloEngine.INITIAL_ELO,
                                 updatedAt = System.currentTimeMillis(),
                             )?.let { updated ->
-                                scope.launch { dao.update(updated) }
+                                scope.launch {
+                                dao.update(updated)
+                                SyncWorker.enqueue(context)
+                            }
                             }
                             onDismiss()
                         },
@@ -938,7 +953,10 @@ private fun TierPickerDialog(
                             elo = EloEngine.INITIAL_ELO,
                             updatedAt = System.currentTimeMillis(),
                         )?.let { updated ->
-                            scope.launch { dao.update(updated) }
+                            scope.launch {
+                                dao.update(updated)
+                                SyncWorker.enqueue(context)
+                            }
                         }
                         onDismiss()
                     },
@@ -979,7 +997,10 @@ private fun StatusPickerDialog(
                                 status = status,
                                 updatedAt = System.currentTimeMillis(),
                             )?.let { updated ->
-                                scope.launch { dao.update(updated) }
+                                scope.launch {
+                                dao.update(updated)
+                                SyncWorker.enqueue(context)
+                            }
                             }
                             onDismiss()
                         },
@@ -1187,6 +1208,32 @@ internal val STATUSES = listOf(
     "dropped",   // Gave up on
     "repeating", // Rewatching
 )
+
+/* ------------------------------------------------------------------ *\
+ *  Fallback builder — local Room entry → MediaDetails when offline    *
+\* ------------------------------------------------------------------ */
+internal fun buildFallbackDetails(e: AnimeEntry): MediaDetails {
+    return MediaDetails(
+        id = e.anilistId,
+        titleEnglish = e.title,
+        titleRomaji = null,
+        coverLarge = e.cover,
+        coverColor = e.coverColor,
+        bannerImage = null,
+        format = e.format,
+        status = null,
+        season = null,
+        year = e.year,
+        episodes = e.episodes,
+        duration = null,
+        averageScore = e.averageScore,
+        genres = e.genres.split(",").map { it.trim() }.filter { it.isNotBlank() },
+        studios = emptyList(),
+        synopsis = e.synopsis ?: "Synopsis unavailable offline.",
+        characters = emptyList(),
+        relations = emptyList(),
+    )
+}
 
 /* ------------------------------------------------------------------ *\
  *  Builder — convert a fetched MediaDetails into an AnimeEntry        *

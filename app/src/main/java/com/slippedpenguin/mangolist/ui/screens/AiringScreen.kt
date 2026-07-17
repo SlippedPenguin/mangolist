@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.AiringSlot
+import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextPrimary
@@ -83,69 +84,71 @@ fun AiringScreen(
         }
     }
 
-    when {
-        loading -> {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
+    Column(modifier = Modifier.fillMaxSize()) {
+        OfflineBanner()
+        when {
+            loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
             }
-        }
-        slots == null || slots!!.isEmpty() -> {
-            // Fallback placeholder — same as v0.5 stub.
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
-            ) {
-                Text(
-                    text = "Airing this week",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "No airing schedule available right now. Pull to refresh or check back later.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            slots == null || slots!!.isEmpty() -> {
+                // Fallback placeholder — same as v0.5 stub.
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                ) {
+                    Text(
+                        text = "Airing this week",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "No airing schedule available right now. Pull to refresh or check back later.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-        }
-        else -> {
-            val items = slots!!
-            // Group by day
-            val grouped = items.groupBy { dayBucket(it.airingAt) }
-            val days = grouped.keys.sorted()
+            else -> {
+                val items = slots!!
+                // Group by day
+                val grouped = items.groupBy { dayBucket(it.airingAt) }
+                val days = grouped.keys.sorted()
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp),
-            ) {
-                days.forEach { dayLabel ->
-                    val daySlots = grouped[dayLabel].orEmpty()
-                    item(key = "header_$dayLabel") {
-                        Text(
-                            text = dayLabel.uppercase(),
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp,
-                            ),
-                            color = Accent,
-                            modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
-                        )
-                    }
-                    items(daySlots, key = { "air_${it.id}" }) { slot ->
-                        AiringCard(
-                            slot = slot,
-                            now = now,
-                            onClick = { onNavigateDetail?.invoke(slot.animeId) },
-                        )
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 8.dp),
+                ) {
+                    days.forEach { dayLabel ->
+                        val daySlots = grouped[dayLabel].orEmpty()
+                        item(key = "header_$dayLabel") {
+                            Text(
+                                text = dayLabel.uppercase(),
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                ),
+                                color = Accent,
+                                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(daySlots, key = { "air_${it.id}" }) { slot ->
+                            AiringCard(
+                                slot = slot,
+                                now = now,
+                                onClick = { onNavigateDetail?.invoke(slot.animeId) },
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
 
 /*
  * Day-bucket label: \"Today\", \"Tomorrow\", \"Wed, Jul 15\", etc.

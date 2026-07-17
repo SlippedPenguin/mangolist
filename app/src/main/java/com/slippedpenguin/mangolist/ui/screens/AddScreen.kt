@@ -42,6 +42,7 @@ import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.TierUnranked
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,6 +73,7 @@ fun AddScreen(navController: NavController) {
     var results by remember { mutableStateOf<List<AnimeEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var inListIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    val isOnline by app.networkObserver.isOnline.collectAsState(initial = true)
 
     // Refresh the already-in-list set so we can disable "+ Add" when needed.
     LaunchedEffect(Unit) {
@@ -100,6 +102,7 @@ fun AddScreen(navController: NavController) {
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
+        OfflineBanner()
         Text(
             text = "Add anime",
             style = MaterialTheme.typography.titleLarge,
@@ -141,7 +144,7 @@ fun AddScreen(navController: NavController) {
             }
             results.isEmpty() -> {
                 Text(
-                    text = "No matches.",
+                    text = if (isOnline) "No matches." else "Search unavailable while offline.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

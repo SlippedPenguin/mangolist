@@ -163,6 +163,9 @@ dependencies {
     // user's existing browser, and lets our MainActivity catch the redirect
     // via the deep-link intent-filter (configured in a follow-up commit).
     implementation(libs.androidx.browser)
+
+    // Background work — auto-push dirty local edits to AniList
+    implementation(libs.androidx.work.runtime.ktx)
 }
 
 // Wire Apollo codegen to depend on the introspection download so codegen

@@ -16,19 +16,22 @@ private val Context.tokenDataStore by preferencesDataStore(name = "token_prefs")
 
 class TokenStore(private val context: Context) {
 
-    private val tokenKey   = stringPreferencesKey("anilist_access_token")
-    private val userIdKey  = stringPreferencesKey("anilist_user_id")
+    private val tokenKey    = stringPreferencesKey("anilist_access_token")
+    private val userIdKey   = stringPreferencesKey("anilist_user_id")
     private val userNameKey = stringPreferencesKey("anilist_user_name")
+    private val avatarUrlKey = stringPreferencesKey("anilist_avatar_url")
 
     val accessToken: Flow<String?> = context.tokenDataStore.data.map { it[tokenKey] }
     val userId:      Flow<String?> = context.tokenDataStore.data.map { it[userIdKey] }
     val userName:    Flow<String?> = context.tokenDataStore.data.map { it[userNameKey] }
+    val avatarUrl:   Flow<String?> = context.tokenDataStore.data.map { it[avatarUrlKey] }
 
-    suspend fun saveToken(token: String, userId: Int, userName: String?) {
+    suspend fun saveToken(token: String, userId: Int, userName: String?, avatarUrl: String? = null) {
         context.tokenDataStore.edit { prefs ->
             prefs[tokenKey]  = token
             prefs[userIdKey] = userId.toString()
             if (userName != null) prefs[userNameKey] = userName
+            if (avatarUrl != null) prefs[avatarUrlKey] = avatarUrl
         }
     }
 
