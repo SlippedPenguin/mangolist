@@ -194,24 +194,39 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 return SyncResult(null, msg)
             }
 
-            val root = json.parseToJsonElement(responseBody).jsonObject
+            val root = (json.parseToJsonElement(responseBody) as? JsonObject)
+                ?: run {
+                    val msg = "Response is not a JSON object: ${responseBody.take(200)}"
+                    android.util.Log.w("AniListClient", "syncUserList $msg")
+                    return SyncResult(null, msg)
+                }
 
             // Surface GraphQL errors even when HTTP is 200.
             val errors = root["errors"]?.jsonArray
             if (errors != null && errors.isNotEmpty()) {
-                val msg = errors.joinToString(", ") { it.jsonObject["message"]?.jsonPrimitive?.content ?: "GraphQL error" }
+                val msg = errors.joinToString(", ") { (it as? JsonObject)?.get("message")?.jsonPrimitive?.content ?: "GraphQL error" }
                 android.util.Log.w("AniListClient", "syncUserList GraphQL errors: $msg")
                 return SyncResult(null, msg)
             }
 
             val nowMillis = System.currentTimeMillis()
-            val entries = root["data"]?.jsonObject
-                ?.get("MediaListCollection")?.jsonObject
-                ?.get("lists")?.jsonArray
+            val collection = (root["data"] as? JsonObject)
+                ?.get("MediaListCollection")
+            // MediaListCollection can be null if the user has no lists.
+            if (collection == null || collection is kotlinx.serialization.json.JsonNull) {
+                return SyncResult(emptyList(), null)
+            }
+            val collObj = (collection as? JsonObject)
+                ?: run {
+                    val msg = "MediaListCollection is not an object: ${collection.toString().take(200)}"
+                    android.util.Log.w("AniListClient", "syncUserList $msg")
+                    return SyncResult(null, msg)
+                }
+            val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                 ?.filterIsInstance<JsonObject>()
                 ?.filter { it["isCustomList"]?.jsonPrimitive?.boolean != true }
                 ?.flatMap { list ->
-                    list["entries"]?.jsonArray
+                    (list["entries"] as? kotlinx.serialization.json.JsonArray)
                         ?.filterIsInstance<JsonObject>()
                         .orEmpty()
                 }
@@ -225,12 +240,21 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
     }
 
     private fun parseMediaListEntry(entry: JsonObject, nowMillis: Long): AnimeEntry? {
-        val media = entry["media"]?.jsonObject ?: return null
-        val title = media["title"]?.jsonObject
-        val coverImage = media["coverImage"]?.jsonObject
-        val startDate = media["startDate"]?.jsonObject
+        return try {
+            parseMediaListEntrySafe(entry, nowMillis)
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "Skipping one list entry due to parse error", e)
+            null
+        }
+    }
 
-        val localStatus = when (entry["status"]?.jsonPrimitive?.content) {
+    private fun parseMediaListEntrySafe(entry: JsonObject, nowMillis: Long): AnimeEntry? {
+        val media = (entry["media"] as? JsonObject) ?: return null
+        val title = media["title"] as? JsonObject
+        val coverImage = media["coverImage"] as? JsonObject
+        val startDate = media["startDate"] as? JsonObject
+
+        val localStatus = when ((entry["status"] as? kotlinx.serialization.json.JsonPrimitive)?.content) {
             "CURRENT"   -> "watching"
             "PLANNING"  -> "plan"
             "COMPLETED" -> "completed"
@@ -240,35 +264,35 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             else        -> "watching"
         }
 
-        val updatedAt = entry["updatedAt"]?.jsonPrimitive?.long
+        val updatedAt = (entry["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
         val editTime = updatedAt?.let { it * 1000L } ?: nowMillis
 
-        val score = entry["score"]?.jsonPrimitive?.double
+        val score = (entry["score"] as? kotlinx.serialization.json.JsonPrimitive)?.double
 
         return AnimeEntry(
-            anilistId     = media["id"]?.jsonPrimitive?.int ?: return null,
-            title         = title?.get("english")?.jsonPrimitive?.content
-                ?: title?.get("romaji")?.jsonPrimitive?.content
+            anilistId     = (media["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null,
+            title         = (title?.get("english") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?: (title?.get("romaji") as? kotlinx.serialization.json.JsonPrimitive)?.content
                 ?: "Untitled",
-            cover         = coverImage?.get("large")?.jsonPrimitive?.content
-                ?: coverImage?.get("medium")?.jsonPrimitive?.content,
-            coverColor    = coverImage?.get("color")?.jsonPrimitive?.content,
-            format        = media["format"]?.jsonPrimitive?.content,
-            episodes      = media["episodes"]?.jsonPrimitive?.int,
-            averageScore  = media["averageScore"]?.jsonPrimitive?.int,
-            year          = startDate?.get("year")?.jsonPrimitive?.int,
+            cover         = (coverImage?.get("large") as? kotlinx.serialization.json.JsonPrimitive)?.content
+                ?: (coverImage?.get("medium") as? kotlinx.serialization.json.JsonPrimitive)?.content,
+            coverColor    = (coverImage?.get("color") as? kotlinx.serialization.json.JsonPrimitive)?.content,
+            format        = (media["format"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
+            episodes      = (media["episodes"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
+            averageScore  = (media["averageScore"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
+            year          = (startDate?.get("year") as? kotlinx.serialization.json.JsonPrimitive)?.int,
             synopsis      = null,
-            genres        = media["genres"]?.jsonArray
-                ?.mapNotNull { it.jsonPrimitive.content }
+            genres        = (media["genres"] as? kotlinx.serialization.json.JsonArray)
+                ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
                 ?.joinToString(",")
                 ?: "",
             tier          = null,
             elo           = 1500,
-            currentEp     = entry["progress"]?.jsonPrimitive?.int ?: 0,
+            currentEp     = (entry["progress"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: 0,
             status        = localStatus,
-            notes         = entry["notes"]?.jsonPrimitive?.content ?: "",
+            notes         = (entry["notes"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "",
             personalScore = score?.let { (it * 10).toInt() },
-            listEntryId   = entry["id"]?.jsonPrimitive?.int,
+            listEntryId   = (entry["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
             updatedAt     = editTime,
             syncedAt      = editTime,
         )
