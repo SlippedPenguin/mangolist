@@ -141,8 +141,8 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
                 put(
                     "query",
                     """
-                    query(\$userId: Int!) {
-                      MediaListCollection(userId: \$userId, type: ANIME) {
+                    query(${'$'}userId: Int!) {
+                      MediaListCollection(userId: ${'$'}userId, type: ANIME) {
                         lists {
                           name
                           isCustomList
@@ -177,6 +177,7 @@ class AniListClient(@Suppress("UNUSED_PARAMETER") context: Context) {
             conn.requestMethod = "POST"
             conn.setRequestProperty("Authorization", "Bearer $token")
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
             conn.doOutput = true
             conn.outputStream.use { it.write(body.toByteArray()) }
 
