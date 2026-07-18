@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,7 +50,9 @@ import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,23 +60,30 @@ import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /*
- * Airing — v1.0: 7-day schedule from AniList's GetAiringSchedule, plus a
- * `On my list` filter so users can quickly see what's next on their own
- * list before the season dumps them into the raw 700+ slots.
+ * Airing — v1.0.1: 7-day schedule from AniList's GetAiringSchedule, plus
+ * a per-anime `On my list` lookup that hits `Media.nextAiringEpisode`
+ * for every anime in the user's tracking list.
  *
- * Two modes, top-level tabs:
- *   - "On my list"  — filters to slots whose animeId appears in the user's
- *                     Room list, then enriches each card with that list's
- *                     current progress (e.g. "Your: 3 / 12"). Tracks
- *                     changes in the local list flow via Room observation
- *                     so the filter updates immediately when something is
- *                     added or status changes to "completed".
- *   - "All airing" — the original v0.6 surface, every airing slot for the
- *                     next week.
+ * v1.0's first attempt filtered the bulk 50-slot global schedule by the
+ * user's local `anilistId` map. That failed because AniList's `perPage:50`
+ * cap lets popular shows crowd out the user's tracked show if their next
+ * episode isn't in the busiest 7-day window — the user reported
+ * "I'm watching a show that's airing but it doesn't show up". The
+ * per-anime path queries show-by-show with `id_in`, so a user's show is
+ * always retrievable regardless of global volume.
  *
- * Unauthenticated users see the same screen but the "On my list" tab will
- * be empty (or hidden if the Room DB is empty) — the "All airing" surface
- * stays available so anonymous browsing is still useful.
+ * Two modes:
+ *   - "On my list"  — `AniListClient.getNextAiringFor(trackedIds)` per
+ *                     anime's `nextAiringEpisode`. No 7-day window. Empty
+ *                     `nextAiringEpisode` is filtered.
+ *                     Statuses included: `plan`, `watching`, `paused`,
+ *                     `repeating`. Excluded: `completed`, `dropped`.
+ *   - "All airing" — the original v0.6 7-day bulk schedule, paginated
+ *                     one-shot via `getAiringSchedule()`.
+ *
+ * `AiringCard` is unchanged: it still reads `progressByAnimeId[animeId]`
+ * for the "Your: 3 / 12" badge regardless of which slab of slots
+ * generated the row.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,32 +94,69 @@ fun AiringScreen(
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
 
-    var slots by remember { mutableStateOf<List<AiringSlot>?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    var now by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
+    var myListSlots by remember { mutableStateOf<List<AiringSlot>?>(null) }
+    var allSlots    by remember { mutableStateOf<List<AiringSlot>?>(null) }
+    var loading     by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var now by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
     var mode by remember { mutableStateOf(AiringMode.ON_MY_LIST) }
 
-    // Local list snapshot for both "On my list" filtering and the per-card
-    // progress badge. observeAll() emits on every Room insert/update, so the
-    // badge stays current without us re-fetching the projection.
     val localEntries by app.database.animeDao()
         .observeAll()
         .collectAsState(initial = emptyList())
 
-    suspend fun reload() {
-        slots = app.anilistClient.getAiringSchedule()
+    // Pre-compute the lookup map once per Room emission so AiringCard's
+    // "Your: 3 / 12" badge stays cheap. The map is no longer used to
+    // filter slots (the per-anime path replaces v1.0's client-side filter)
+    // — only for the progress badge.
+    val progressByAnimeId = remember(localEntries) {
+        localEntries.associate { it.anilistId to it }
+    }
+
+    // Tracked-IDs derived from Room. Filters out statuses that don't have
+    // expected upcoming episodes: completed shows are done, dropped shows
+    // are users' signal that they don't want updates.
+    val trackedIds = remember(localEntries) {
+        localEntries
+            .filter { it.status in listOf("plan", "watching", "paused", "repeating") }
+            .map { it.anilistId }
+    }
+
+    // Initial parallel fetch on first composition. Both slabs load
+    // concurrently so switching tabs is instant after that.
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            launch { allSlots = app.anilistClient.getAiringSchedule() }
+            launch {
+                myListSlots = if (trackedIds.isEmpty()) emptyList()
+                              else app.anilistClient.getNextAiringFor(trackedIds)
+            }
+        }
         loading = false
         now = System.currentTimeMillis() / 1000
     }
 
-    LaunchedEffect(Unit) {
-        reload()
+    // When the local list changes (add / edit / delete / status flip), only
+    // re-fetch the "On my list" slab — the global schedule doesn't depend
+    // on the user's list. This LaunchedEffect re-fires on every localEntries
+    // change. Its first fire (with `localEntries = emptyList()`) is a
+    // no-op because `getNextAiringFor(emptyList())` is fast-fail.
+    LaunchedEffect(trackedIds) {
+        myListSlots = if (trackedIds.isEmpty()) emptyList()
+                      else app.anilistClient.getNextAiringFor(trackedIds)
     }
 
+    // Pull-to-refresh re-fetches both slabs in parallel.
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            reload()
+            coroutineScope {
+                launch { allSlots = app.anilistClient.getAiringSchedule() }
+                launch {
+                    myListSlots = if (trackedIds.isEmpty()) emptyList()
+                                  else app.anilistClient.getNextAiringFor(trackedIds)
+                }
+            }
+            now = System.currentTimeMillis() / 1000
             isRefreshing = false
         }
     }
@@ -124,20 +169,10 @@ fun AiringScreen(
         }
     }
 
-    // Pre-compute the lookup map once per Room emission so card rendering
-    // stays cheap. Restricting to fields the card needs keeps the projection
-    // small.
-    val progressByAnimeId = remember(localEntries) {
-        localEntries.associate { it.anilistId to it }
-    }
-
-    val filteredSlots = remember(slots, mode, progressByAnimeId) {
-        when {
-            slots == null -> null
-            mode == AiringMode.ALL         -> slots
-            mode == AiringMode.ON_MY_LIST  -> slots!!.filter { it.animeId in progressByAnimeId }
-            else                          -> slots
-        }
+    val activeSlots = when {
+        mode == AiringMode.ON_MY_LIST -> myListSlots
+        mode == AiringMode.ALL        -> allSlots
+        else                         -> null
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -152,7 +187,6 @@ fun AiringScreen(
                     selected = mode.ordinal == index,
                     onClick = { mode = tabMode },
                     text = {
-                        val count = filteredSlots?.size ?: 0
                         Text(
                             text = when (tabMode) {
                                 AiringMode.ON_MY_LIST -> "On my list"
@@ -179,7 +213,7 @@ fun AiringScreen(
                         CircularProgressIndicator()
                     }
                 }
-                filteredSlots == null || filteredSlots!!.isEmpty() -> {
+                activeSlots == null || activeSlots!!.isEmpty() -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -187,7 +221,17 @@ fun AiringScreen(
                     ) {
                         Text(
                             text = when (mode) {
-                                AiringMode.ON_MY_LIST -> "Nothing on your list is airing this week."
+                                AiringMode.ON_MY_LIST -> {
+                                    when {
+                                        localEntries.isEmpty() ->
+                                            "Add or sync some anime first — the airing tab is empty without a local list."
+                                        trackedIds.isEmpty() ->
+                                            "None of your tracking shows are still airing." +
+                                                " Mark a show as Completed or Dropped to clear it from this view."
+                                        else ->
+                                            "None of your tracking shows have an upcoming episode scheduled."
+                                    }
+                                }
                                 AiringMode.ALL        -> "No airing schedule available right now."
                             },
                             style = MaterialTheme.typography.titleMedium,
@@ -195,7 +239,7 @@ fun AiringScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = when (mode) {
-                                AiringMode.ON_MY_LIST -> "Pull to refresh, or check back when something on your list has a new episode scheduled."
+                                AiringMode.ON_MY_LIST -> "Pull to refresh, or add a still-airing show to your list."
                                 AiringMode.ALL        -> "Pull to refresh or check back later."
                             },
                             style = MaterialTheme.typography.bodyMedium,
@@ -204,8 +248,7 @@ fun AiringScreen(
                     }
                 }
                 else -> {
-                    val itemsList = filteredSlots!!
-                    // Group by day
+                    val itemsList = activeSlots!!
                     val grouped = itemsList.groupBy { dayBucket(it.airingAt) }
                     val days = grouped.keys.sorted()
 
@@ -338,10 +381,6 @@ private fun AiringCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )
-                    // Per-card progress badge: only render when the user is
-                    // tracking this anime locally. Format depends on
-                    // whether the entry reports a final episode count or
-                    // is still airing (episodes == null).
                     localEntry?.let { entry ->
                         val myEp = entry.currentEp
                         val total = entry.episodes

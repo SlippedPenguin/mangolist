@@ -806,6 +806,90 @@ class AniListClient(
         }
     }
 
+    /**
+     * Fetch `Media.nextAiringEpisode` for a specific list of media IDs.
+     * Used by AiringScreen's `On my list` tab so the user's tracking shows
+     * always appear even when their global schedule slot falls off the
+     * AniList `Page(perPage:50)` first page (a busy season routinely
+     * produces 50+ airing slots within a single day).
+     *
+     * Per-all-show / per-anime queries have no global ranking and no
+     * 7-day window — `nextAiringEpisode` returns the show's next planned
+     * episode regardless of how far out it is. The caller (AiringScreen)
+     * chunks the `id_in` list into batches of 50 because AniList's perPage
+     * cap on `Page.media` is 50.
+     *
+     * Returns a list sorted ascending by `airingAt` so day-grouping in the
+     * UI can render top-to-bottom without re-sorting. Slots whose
+     * `nextAiringEpisode` is null (finished, indefinite-hiatus, between
+     * seasons) are filtered out — the show simply has no upcoming episode
+     * worth surfacing.
+     */
+    suspend fun getNextAiringFor(mediaIds: List<Int>): List<AiringSlot> {
+        if (mediaIds.isEmpty()) return emptyList()
+        return withNetwork(emptyList()) {
+            try {
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val result = mediaIds.chunked(50).flatMap { batch ->
+                    val payload = buildJsonObject {
+                        put(
+                            "query",
+                            "query(\$ids:[Int])" +
+                            "{Page(perPage:50)" +
+                            "{media(id_in:\$ids,type:ANIME)" +
+                            "{id title{english romaji} coverImage{large}" +
+                            "nextAiringEpisode{id airingAt episode}}}}"
+                        )
+                        put("variables", buildJsonObject {
+                            put("ids", JsonArray(batch.map { JsonPrimitive(it) }))
+                        })
+                    }
+                    val body = json.encodeToString(JsonObject.serializer(), payload)
+
+                    val conn = openPost("https://graphql.anilist.co")
+                    conn.outputStream.use { it.write(body.toByteArray()) }
+
+                    if (conn.responseCode !in 200..299) {
+                        android.util.Log.w(
+                            "AniListClient",
+                            "getNextAiringFor HTTP ${conn.responseCode} on batch of ${batch.size}",
+                        )
+                        return@flatMap emptyList<AiringSlot>()
+                    }
+                    val responseBody = conn.inputStream.bufferedReader().readText()
+                    val root = json.parseToJsonElement(responseBody).jsonObject
+                    val mediaArray = root["data"]?.jsonObject
+                        ?.get("Page")?.jsonObject
+                        ?.get("media")?.jsonArray ?: return@flatMap emptyList()
+
+                    mediaArray.mapNotNull { el ->
+                        val m = el.jsonObject
+                        // nextAiringEpisode is null when the show has no
+                        // planned future episode (finished, between-seasons,
+                        // or indefinite hiatus). Skip those.
+                        val next = m["nextAiringEpisode"] as? JsonObject ?: return@mapNotNull null
+                        val title = m["title"] as? JsonObject
+                        val cover = m["coverImage"] as? JsonObject
+                        AiringSlot(
+                            id = (next["id"] as? JsonPrimitive)?.int ?: return@mapNotNull null,
+                            airingAt = (next["airingAt"] as? JsonPrimitive)?.long ?: return@mapNotNull null,
+                            episode = (next["episode"] as? JsonPrimitive)?.int ?: 0,
+                            animeId = (m["id"] as? JsonPrimitive)?.int ?: return@mapNotNull null,
+                            title = (title?.get("english") as? JsonPrimitive)?.content
+                                ?: (title?.get("romaji") as? JsonPrimitive)?.content
+                                ?: "Untitled",
+                            coverLarge = (cover?.get("large") as? JsonPrimitive)?.content,
+                        )
+                    }
+                }
+                result
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "getNextAiringFor failed", e)
+                emptyList()
+            }
+        }.sortedBy { it.airingAt }
+    }
+
     suspend fun getAiringSchedule(): List<AiringSlot> {
         val now = System.currentTimeMillis() / 1000
         val week = now + 7 * 86400
