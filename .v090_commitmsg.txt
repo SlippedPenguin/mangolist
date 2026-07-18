@@ -1,0 +1,71 @@
+v0.9.0: Favorites / collection view (media-level round-trip)
+
+First HANDOFF medium-priority gap. Adds a favourites round-trip with
+AniList and a Watchlist tab to slice the list by favourites.
+
+Note: AniList v2's favourites are MEDIA-level (`Media.isFavourite`),
+not list-entry-level. The first attempt of this commit tried to
+write favourite as a field of `MediaList`/`SaveMediaListEntry` and
+the Apollo codegen rejected it (queries.graphql: `Can't query
+'favourite' on type 'MediaList'`). v0.9.0 final corrects the schema:
+pull reads `media.isFavourite`, push uses the standalone
+`ToggleFavourite(animeId: Int)` mutation.
+
+Schema:
+  - AnimeEntry gains a non-null `favourite: Boolean = false` field.
+    Local-only tier/elo/notes survive the schema bump because the
+    migration is explicit (ALTER TABLE ADD COLUMN ... DEFAULT 0)
+    rather than destructive. Room version bumps 2 -> 3.
+  - `AnimeDatabase.MIGRATION_2_3` registers with the builder before
+    the fallbackToDestructiveMigration safety net.
+
+GraphQL:
+  - queries.graphql: ListEntryFields Fragment + SaveMediaListEntry
+    mutation REVERTED to v0.8.x form (no favourite at MediaList
+    level). New ToggleFavourite mutation documented in the .graphql
+    file; runtime uses the hand-rolled POST in AniListClient.
+  - Hand-rolled syncUserList query string now requests `isFavourite`
+    on the `media { ... }` block.
+  - Hand-rolled saveEntry mutation/variables/response REVERTED: no
+    favourite variable, no favourite field reference, no favourite
+    in the response selection set. SaveResult class lost its
+    favourite field.
+  - New `suspend fun toggleFavorite(token: String, animeId: Int):
+    Boolean?` on AniListClient — POSTs the ToggleFavourite
+    mutation, walks the response, returns true iff the animeId is
+    in the post-toggle user.favourites.anime nodes connection.
+
+Round-trip semantics:
+  - Pull sync overwrites local favourite with server `isFavourite`
+    on every sync — favourites are NOT in `preserveLocalFields()` so
+    the server is treated as truth on each pull.
+  - Toggle path is direct (not via SyncWorker): user taps the star
+    in DetailScreen.TrackingCard -> AniListClient.toggleFavorite
+    -> Room update. On network/parse/unauth failure we optimistically
+    flip locally so the star still responds; the next pull will
+    reconcile when network comes back.
+
+UI:
+  - WatchlistScreen gains an eighth tab "Favorites" at the right end
+    of the ScrollableTabRow. The tab uses the FAVORITES_KEY sentinel
+    string ("__favorites__") which the filter handler branches on as
+    a third dimension distinct from the six real AnimeEntry.status
+    values.
+  - AnimeCard gains `showFavorite: Boolean = false` opt-in. When
+    set and entry.favourite is true, a small filled Star icon
+    renders next to the title. Order: title -> favourite star ->
+    cloud-upload icon so favourite reads as a property and cloud
+    reads as transient dirty state.
+  - DetailScreen.TrackingCard gains a star IconButton in the status
+    row between Elo and "Change". Tapping calls
+    AniListClient.toggleFavorite and optimistically mirrors in Room.
+
+HANDOFF.md refresh:
+  - top release line bumped v0.8.5 -> v0.9.0
+  - new "v0.9+ deltas" section appended with the corrected-schema
+    rows (read path: media.isFavourite; write path: standalone
+    ToggleFavourite mutation; SaveMediaListEntry reverted)
+
+Build:
+  - versionCode 5 -> 6
+  - versionName "0.8.5" -> "0.9.0"

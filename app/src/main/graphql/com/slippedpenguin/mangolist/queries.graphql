@@ -95,6 +95,11 @@ query GetMediaListCollection($userId: Int!, $type: MediaType = ANIME) {
 }
 
 # Push local edits back. Pass either id (existing entry) or mediaId (create new).
+# Note: AniList v2's MediaList type does NOT expose a `favourite` field.
+# AniList's favourites are media-level (`Media.isFavourite: Boolean!`),
+# not list-entry-level. To toggle a favorite, use the standalone
+# ToggleFavourite mutation (see below) — SaveMediaListEntry itself is
+# for status/progress/score/notes only.
 mutation SaveMediaListEntry(
   $id: Int
   $mediaId: Int
@@ -117,6 +122,21 @@ mutation SaveMediaListEntry(
     score
     notes
     updatedAt
+  }
+}
+
+# Toggle the viewer's favourite flag on a single media. Media-level,
+# not list-entry-level — every list the user has for this media will
+# reflect the new state. The mutation itself returns the up-to-date
+# User.favourites.anime { nodes { id } } connection so callers can
+# verify the post-toggle state without a second round-trip.
+mutation ToggleFavourite($animeId: Int) {
+  ToggleFavourite(animeId: $animeId) {
+    anime {
+      nodes {
+        id
+      }
+    }
   }
 }
 
@@ -158,5 +178,6 @@ fragment ListEntryFields on MediaList {
   updatedAt
   media {
     ...AnimeCardFields
+    isFavourite
   }
 }

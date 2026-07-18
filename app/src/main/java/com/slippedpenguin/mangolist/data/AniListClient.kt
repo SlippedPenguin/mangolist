@@ -208,6 +208,7 @@ class AniListClient(
                               format
                               averageScore
                               startDate { year }
+                              isFavourite
                               genres
                             }
                           }
@@ -335,6 +336,7 @@ class AniListClient(
             status        = localStatus,
             notes         = (entry["notes"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "",
             personalScore = score?.let { (it * 10).toInt() },
+            favourite     = (media["isFavourite"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull ?: false,
             listEntryId   = (entry["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
             updatedAt     = editTime,
             syncedAt      = editTime,
@@ -499,9 +501,9 @@ class AniListClient(
                 val payload = buildJsonObject {
                     put(
                         "query",
-                        "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$scoreRaw:Int,\$progress:Int,\$notes:String)" +
-                        "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,scoreRaw:\$scoreRaw,progress:\$progress,notes:\$notes)" +
-                        "{id updatedAt notes}}"
+                    "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$scoreRaw:Int,\$progress:Int,\$notes:String)" +
+                    "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,scoreRaw:\$scoreRaw,progress:\$progress,notes:\$notes)" +
+                    "{id updatedAt notes}}"
                     )
                     put("variables", variables)
                 }
@@ -555,6 +557,91 @@ class AniListClient(
      * Fetch the next 7 days of airing schedules from AniList.
      * Returns slots sorted by airingAt ascending.
      */
+/*
+     * Toggle the viewer's favourite flag for a single anime.
+     *
+     * AniList's favourites are media-level (Media.isFavourite), not list-
+     * entry-level, so this is intentionally separate from saveEntry.
+     * saveEntry mutates a MediaList row; this toggles the user's media-
+     * level favourite set on the AniList server. The same AniList
+     * openPost(url, bearerToken?) helper used by saveEntry handles the
+     * Cloudflare-friendly UA / timeouts / Connection: close concerns.
+     *
+     * The mutation's response includes the up-to-date
+     * User.favourites.anime { nodes { id } } connection. We scan the
+     * returned nodes and check whether our animeId is present - that
+     * gives us the post-toggle state without a second round-trip. We
+     * explicitly request the full page: { perPage: 500 } so power
+     * users with >50 favourites don't get silently truncated out of
+     * the post-toggle scan.
+     *
+     * Returns the new favourite state on success; null on any
+     * network/parse error or when the response shape doesn't expose the
+     * nodes we need. The caller (DetailScreen) is responsible for
+     * writing the result back to Room and falling back to optimistic-
+     * flip-on-null locally.
+     */
+    suspend fun toggleFavorite(token: String, animeId: Int): Boolean? {
+        if (token.isBlank()) return null
+        return withNetwork(null) {
+            try {
+                val variables = buildJsonObject {
+                    put("animeId", animeId)
+                }
+                val payload = buildJsonObject {
+                    put(
+                        "query",
+                        "mutation(\$animeId:Int)" +
+                        "{ToggleFavourite(animeId:\$animeId)" +
+                        "{anime{nodes{id}}}}"
+                    )
+                    put("variables", variables)
+                }
+                val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                val body = json.encodeToString(JsonObject.serializer(), payload)
+
+                val conn = openPost("https://graphql.anilist.co", token)
+                conn.outputStream.use { it.write(body.toByteArray()) }
+
+                if (conn.responseCode !in 200..299) {
+                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    android.util.Log.w(
+                        "AniListClient",
+                        "toggleFavorite HTTP ${conn.responseCode} (animeId=$animeId): ${errorBody.take(400)}",
+                    )
+                    return@withNetwork null
+                }
+                val responseBody = conn.inputStream.bufferedReader().readText()
+                val root = json.parseToJsonElement(responseBody).jsonObject
+
+                // GraphQL-level errors (validation, schema mismatch) - same
+                // shape as saveEntry's path; surface and bail.
+                (root["errors"] as? kotlinx.serialization.json.JsonArray)?.let { errs ->
+                    val msgs = errs.joinToString(", ") { e ->
+                        ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
+                    }
+                    android.util.Log.w("AniListClient", "toggleFavorite GraphQL errors (animeId=$animeId): $msgs")
+                    return@withNetwork null
+                }
+
+                // Walk: data -> ToggleFavourite -> anime -> nodes
+                val data = root["data"] as? JsonObject
+                val toggleNode = data?.get("ToggleFavourite") as? JsonObject
+                val anime = toggleNode?.get("anime") as? JsonObject
+                val nodes = anime?.get("nodes") as? JsonArray
+                    ?: return@withNetwork null
+                nodes.any { node ->
+                    val nodeObj = node as? JsonObject ?: return@any false
+                    val id = nodeObj["id"] as? JsonPrimitive ?: return@any false
+                    id.int == animeId
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "toggleFavorite failed", e)
+                null
+            }
+        }
+    }
+
     suspend fun getAiringSchedule(): List<AiringSlot> {
         val now = System.currentTimeMillis() / 1000
         val week = now + 7 * 86400
@@ -685,7 +772,7 @@ data class SyncResult(
     val error: String?,
 )
 
-/**
+/*
  * Result wrapper for a successful SaveMediaListEntry mutation.
  * `updatedAtSeconds` is the server timestamp in seconds (multiply by 1000
  * for local millis). `notes` is the server-stored value, which may differ

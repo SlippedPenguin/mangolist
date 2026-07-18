@@ -23,7 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -160,6 +162,32 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             dao.upsert(buildEntryFromDetails(d))
         }
     }
+    /*
+     * Toggle favoriting on the Detail screen fires a single round-trip
+     * to AniList's `ToggleFavourite` mutation via `AniListClient`. On
+     * success we trust the server's response. On network/parse/unauth
+     * failure we optimistically flip the local Room flag so the star
+     * icon still responds to taps; the next pull sync will reconcile it.
+     * Notably we do NOT call SyncWorker.enqueue here — favourite is
+     * media-level state and doesn't ride the per-list-entry dirty queue.
+     */
+    val toggleFavorite: () -> Unit = {
+        scope.launch {
+            val e = entry ?: return@launch
+            val tok = token
+            val serverState = if (!tok.isNullOrBlank()) {
+                app.anilistClient.toggleFavorite(tok, e.anilistId)
+            } else {
+                null
+            }
+            dao.update(
+                e.copy(
+                    favourite = serverState ?: !e.favourite,
+                    updatedAt = System.currentTimeMillis(),
+                )
+            )
+        }
+    }
     val requestSync: () -> Unit = {
         scope.launch {
             val e = entry ?: return@launch
@@ -230,17 +258,18 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
             }
             item {
                 TrackingCard(
-                    app           = app,
-                    entry         = entry,
-                    dao           = dao,
-                    scope         = scope,
-                    scoreScale    = scoreScale,
-                    onTierClick   = { showTierSheet = true },
-                    onStatusClick = { showStatusSheet = true },
-                    onNotesClick  = { showNotesDialog = true },
-                    onScoreClick  = { showScorePicker = true },
-                    onAddToList   = addToList,
-                    onSync        = requestSync,
+                    app              = app,
+                    entry            = entry,
+                    dao              = dao,
+                    scope            = scope,
+                    scoreScale       = scoreScale,
+                    onTierClick      = { showTierSheet = true },
+                    onStatusClick    = { showStatusSheet = true },
+                    onNotesClick     = { showNotesDialog = true },
+                    onScoreClick     = { showScorePicker = true },
+                    onFavoriteToggle = toggleFavorite,
+                    onAddToList      = addToList,
+                    onSync           = requestSync,
                 )
             }
             item { Spacer(Modifier.height(40.dp)) }
@@ -732,6 +761,7 @@ private fun TrackingCard(
     onStatusClick: () -> Unit,
     onNotesClick: () -> Unit,
     onScoreClick: () -> Unit,
+    onFavoriteToggle: () -> Unit,
     onAddToList: () -> Unit,
     onSync: () -> Unit,
 ) {
@@ -756,7 +786,10 @@ private fun TrackingCard(
             return@Column
         }
 
-        // Status row — tap the pill to open StatusPickerDialog.
+        // Status row — pill + Elo on the left, favorite toggle in the
+        // middle, "Change" status picker on the right. Star uses the
+        // filled variant when the entry is on AniList's favourites list,
+        // outlined + muted otherwise — matches the Anihyou convention.
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -770,6 +803,15 @@ private fun TrackingCard(
                 fontWeight = FontWeight.ExtraBold,
             )
             Spacer(Modifier.weight(1f))
+            IconButton(onClick = onFavoriteToggle) {
+                Icon(
+                    imageVector = if (e.favourite) Icons.Filled.Star
+                                   else Icons.Outlined.StarBorder,
+                    contentDescription = if (e.favourite) "Remove from favorites"
+                                         else "Add to favorites",
+                    tint = if (e.favourite) Accent else TextMuted,
+                )
+            }
             TextButton(onClick = onStatusClick) {
                 Text(
                     text = "Change",

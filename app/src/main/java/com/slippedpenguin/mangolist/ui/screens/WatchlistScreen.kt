@@ -45,6 +45,13 @@ import kotlinx.coroutines.launch
  * distribution at a glance without scrolling. `selectedStatus == null` is
  * the All sentinel.
  *
+ * v0.9.0 (Favorites): a `Favorites` tab sits at the end of the row,
+ * filtering by the new `entry.favourite` Boolean. The tab uses a sentinel
+ * key (`FAVORITES_KEY`) that's distinct from any real AnimeEntry.status
+ * value, so the filter handler branches on it instead of matching a
+ * status string. AnimeCard gets the new `showFavorite = true` opt-in
+ * so each row in the list gets a tiny filled star when favorited.
+ *
  * The `observeAll` Flow still drives updates — filtering is local to the
  * scope, so a sync push that lands in Room re-runs the filter automatically.
  */
@@ -62,12 +69,19 @@ fun WatchlistScreen(navController: NavController) {
     var isRefreshing by remember { mutableStateOf(false) }
     // null = All. The detected statuses in HANDOFF.md are
     // watching / completed / plan / dropped / paused / repeating.
+    // The "__favorites__" sentinel is the Favorites tab (added in
+    // v0.9.0) — it's a third dimension orthogonal to the six status
+    // filters, so the filter logic branches on `key == FAVORITES_KEY`
+    // rather than matching an actual AnimeEntry.status value.
     var selectedStatus by remember { mutableStateOf<String?>(null) }
 
     val counts = remember(entries) { statusCounts(entries) }
     val filtered = remember(entries, selectedStatus) {
-        if (selectedStatus == null) entries
-        else entries.filter { it.status == selectedStatus }
+        when (selectedStatus) {
+            null                  -> entries
+            FAVORITES_KEY         -> entries.filter { it.favourite }
+            else                  -> entries.filter { it.status == selectedStatus }
+        }
     }
     val selectedIndex = remember(selectedStatus) {
         statusTabs.indexOfFirst { it.key == selectedStatus }.coerceAtLeast(0)
@@ -153,6 +167,7 @@ fun WatchlistScreen(navController: NavController) {
                                 onClick = { navController.navigate("detail/${entry.anilistId}") },
                                 showSyncPending = true,
                                 showRelativeTimestamp = true,
+                                showFavorite = true,
                             )
                         }
                     }
@@ -166,28 +181,35 @@ fun WatchlistScreen(navController: NavController) {
  * Status tabs. `key == null` is the All sentinel — picks the filter
  * branch that shows every entry. The order mirrors the Anihyou /
  * MyAnimeList convention: All first, then active, then completed,
- * then dropped, then paused, then repeating.
+ * then dropped, then paused, then repeating. The Favorites tab is
+ * a separate orthogonal filter (added v0.9.0), keyed on the
+ * FAVORITES_KEY sentinel so the filter handler can branch on it
+ * independently of the six status values.
  */
+private const val FAVORITES_KEY = "__favorites__"
 private data class StatusTab(val key: String?, val label: String)
 private val statusTabs = listOf(
-    StatusTab(key = null,        label = "All"),
-    StatusTab(key = "watching",  label = "Watching"),
-    StatusTab(key = "completed", label = "Completed"),
-    StatusTab(key = "plan",      label = "Planning"),
-    StatusTab(key = "dropped",   label = "Dropped"),
-    StatusTab(key = "paused",    label = "Paused"),
-    StatusTab(key = "repeating", label = "Repeating"),
+    StatusTab(key = null,           label = "All"),
+    StatusTab(key = "watching",     label = "Watching"),
+    StatusTab(key = "completed",    label = "Completed"),
+    StatusTab(key = "plan",         label = "Planning"),
+    StatusTab(key = "dropped",      label = "Dropped"),
+    StatusTab(key = "paused",       label = "Paused"),
+    StatusTab(key = "repeating",    label = "Repeating"),
+    StatusTab(key = FAVORITES_KEY,  label = "Favorites"),
 )
 
 /*
- * statusCounts — count per status + total at the `null` key. Lets the
- * tab labels show their bucket size without each tab recomputing the
- * whole list. Grouped on the entries list once per dataset change
- * (wrapped in `remember(entries)` at the call site).
+ * statusCounts — count per status + total at the `null` key + favourites
+ * total at the `FAVORITES_KEY`. Lets the tab labels show their bucket
+ * size without each tab recomputing the whole list. Grouped on the
+ * entries list once per dataset change (wrapped in `remember(entries)`
+ * at the call site).
  */
 private fun statusCounts(entries: List<AnimeEntry>): Map<String?, Int> {
     val map = HashMap<String?, Int>()
     map[null] = entries.size
+    map[FAVORITES_KEY] = entries.count { it.favourite }
     for (e in entries) {
         map[e.status] = (map[e.status] ?: 0) + 1
     }

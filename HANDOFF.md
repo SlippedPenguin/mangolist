@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v0.8.5](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.5)  
+> **Latest documented release:** [v0.9.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.9.0)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -203,6 +203,16 @@ Quick reference for what's new since the last documented release.
 | Watchlist list filter | Flat dump of every anime in `updatedAt DESC` order, no filtering | `ScrollableTabRow` above the list: All / Watching / Completed / Planning / Dropped / Paused / Repeating, each tab shows its count |
 | Per-card sync feedback | None (user couldn’t see if a local edit was queued) | `AnimeCard.showSyncPending = true` renders a small cloud-upload icon next to the title when `syncedAt == null \|\| updatedAt > syncedAt` |
 | Per-card edit feedback | None | `AnimeCard.showRelativeTimestamp = true` adds an "Edited 2h ago" line via `android.text.format.DateUtils` |
+
+## v0.9+ deltas (since v0.8.5)
+
+| Area | v0.8.5 | v0.9.0 |
+|---|---|---|
+| Favorites | No concept (lists held by status + tier / Elo only) | New `AnimeEntry.favourite: Boolean = false` field; Room v2→v3 migration that adds the column with default false (preserves tier/elo, which are local-only); round-trips with AniList's `MediaList.favourite` field via the hand-rolled `syncUserList` (read on pull sync) and `saveEntry` (write on push) |
+| Detail-screen favorite toggle | None | New `IconButton` in `DetailScreen.TrackingCard`'s status row — filled yellow star when favorited, outlined otherwise. Toggling writes the entry + enqueues `SyncWorker.enqueue(app)` so the change pushes to AniList in the background |
+| Watchlist’s “Favorites” tab | None | Eighth tab in `WatchlistScreen`'s `ScrollableTabRow`, filtering by `entry.favourite`; the `FAVORITES_KEY = "__favorites__"` sentinel keeps it orthogonal to the six status filters so the filter handler can branch cleanly |
+| Per-card favorite indicator | None | `AnimeCard.showFavorite = true` renders a small filled `Star` next to the title (ordering: title → favourite star → cloud-upload icon when both apply) |
+| SaveMediaListEntry response surface | `{id updatedAt notes}` | `{id updatedAt notes favourite}`; `SaveResult` data class gains `favourite: Boolean?` so `SyncWorker` can write back what AniList stored |
 
 **Code anchors** for navigating the v0.8+ work:
 - `AniListClient.saveEntry` — the hand-rolled POST in `data/AniListClient.kt` (around the "Push a single AnimeEntry edit back to AniList" doc-comment).

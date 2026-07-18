@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +56,12 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
  *   - `showRelativeTimestamp = true` adds an "Edited X ago" line under the
  *     status pill + progress row using android.text.format.DateUtils.
  *     Defaults to false so Tiers/Airing rows stay compact.
+ *
+ * v0.9.0 (favourites): a third opt-in
+ *   - `showFavorite = true` renders a small filled `Star` icon next to the
+ *     title when `entry.favourite == true`. Order: title -> favorite ->
+ *     cloud-upload so favourite reads as a property and cloud-upload reads
+ *     as transient dirty state. Tiers/Airing omit it; Watchlist passes it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -67,6 +74,7 @@ fun AnimeCard(
     rankText: String? = null,
     showSyncPending: Boolean = false,
     showRelativeTimestamp: Boolean = false,
+    showFavorite: Boolean = false,
 ) {
     Card(
         modifier = modifier
@@ -120,6 +128,14 @@ fun AnimeCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
                     )
+                    if (showFavorite && entry.favourite) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = "Favorite",
+                            tint = Accent,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                     if (showSyncPending && entry.isPendingSync()) {
                         Icon(
                             imageVector = Icons.Outlined.CloudUpload,
