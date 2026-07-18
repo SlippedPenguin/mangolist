@@ -493,14 +493,14 @@ class AniListClient(
                     put("mediaId", entry.anilistId)
                     put("status", anilistStatus)
                     put("progress", entry.currentEp)
-                    entry.personalScore?.let { put("score", it / 10.0) }
+                    entry.personalScore?.let { put("scoreRaw", it) }
                     put("notes", entry.notes)
                 }
                 val payload = buildJsonObject {
                     put(
                         "query",
-                        "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$score:Float,\$progress:Int,\$notes:String)" +
-                        "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,score:\$score,progress:\$progress,notes:\$notes)" +
+                        "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$scoreRaw:Int,\$progress:Int,\$notes:String)" +
+                        "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,scoreRaw:\$scoreRaw,progress:\$progress,notes:\$notes)" +
                         "{id updatedAt notes}}"
                     )
                     put("variables", variables)
@@ -513,12 +513,24 @@ class AniListClient(
 
                 if (conn.responseCode !in 200..299) {
                     val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
-                    android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}: ${errorBody.take(200)}")
+                    android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode} (anilistId=${entry.anilistId}, status=${entry.status}, currentEp=${entry.currentEp}, personalScore=${entry.personalScore}, notes.len=${entry.notes.length}): ${errorBody.take(400)}")
                     return null
                 }
                 val responseBody = conn.inputStream.bufferedReader().readText()
                 val root = json.parseToJsonElement(responseBody).jsonObject
-                val saveNode = root["data"]?.jsonObject?.get("SaveMediaListEntry")?.jsonObject ?: return null
+                // Surface GraphQL-level errors (validation, schema mismatch) — they typically
+                // come back as HTTP 200 with a `errors` array and no `data`.
+                (root["errors"] as? kotlinx.serialization.json.JsonArray)?.let { errs ->
+                    val msgs = errs.joinToString(", ") { e ->
+                        ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
+                    }
+                    android.util.Log.w("AniListClient", "saveEntry GraphQL errors (anilistId=${entry.anilistId}): $msgs")
+                    return null
+                }
+                val saveNode = root["data"]?.jsonObject?.get("SaveMediaListEntry")?.jsonObject ?: run {
+                    android.util.Log.w("AniListClient", "saveEntry response has no data.SaveMediaListEntry: ${responseBody.take(400)}")
+                    return null
+                }
                 val id = (saveNode["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null
                 val updatedAtSeconds = (saveNode["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
                 val notesElement = saveNode["notes"]

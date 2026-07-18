@@ -1,0 +1,59 @@
+fix(v0.8.4): rewrite saveEntry to use scoreRaw — likely root cause of v0.8.3 sync still failing
+
+User report from v0.8.3: "There still is a sync error when I try to sync
+something."
+
+Even after v0.8.3's Cloudflare-friendly User-Agent, 15s/30s timeouts,
+Accept: application/json, and Connection: close shipped green, sync
+continued to fail. The likely remaining root cause: the hand-rolled
+SaveMediaListEntry mutation used AniList's `score:Float` argument,
+which is interpreted in the user's *chosen* scoring method (e.g.
+POINT_10_DECIMAL, POINT_100, POINT_5, POINT_3). If the user's AniList
+account has a scoreFormat other than POINT_10_DECIMAL, sending
+`score: 7.5` may be rejected as out-of-range. AniList v2 documents BOTH
+`score:Float` and `scoreRaw:Int`. `scoreRaw` is the format-agnostic
+0-100 raw integer; AniList derives the user's chosen scoring display
+from it regardless of scoreFormat.
+
+Our internal AnimeEntry already stores personalScore as a 0-100 Int,
+so we can pass it directly to scoreRaw without any conversion.
+
+Changes in app/src/main/java/com/slippedpenguin/mangolist/data/AniListClient.kt
+inside `suspend fun saveEntry(token, entry): SaveResult?`:
+
+1. Mutation declaration: `\$score:Float` → `\$scoreRaw:Int`.
+2. Mutation field reference: `score:\$score` → `scoreRaw:\$scoreRaw`.
+3. Variables body:
+     -  put("score", it / 10.0)   →   put("scoreRaw", it)
+   personalScore is already 0-100 in AnimeEntry, sent as Int directly.
+4. Added: 400-char error body excerpt + (anilistId, status, currentEp,
+   personalScore, notes.length) diagnostic to the non-200 log so the
+   next failure is fully debugable from logcat.
+5. Added: detection of `errors[]` arrays in 200 OK responses —
+   GraphQL validation failures (e.g. type mismatch) typically come back
+   with HTTP 200 + errors[] and previously fell through silently into
+   the `data.SaveMediaListEntry` parse path. Now they log + return null.
+6. Added: explicit guard + log around missing `data.SaveMediaListEntry`
+   response object.
+7. Existing `notes :String?` write-back unchanged — already safe:
+   `notes = result.notes ?: e.notes` (AniList sends string or null JSON).
+
+The four other sync paths are unaffected because they use the
+`queryMediaListCollection` query (not the saveEntry mutation) and
+their only tunable field per user is the API URL — which v0.8.3
+already addressed.
+
+build.gradle.kts: versionCode 3 → 4, versionName "0.8.3" → "0.8.4".
+
+The "Notes: null" complaint was also investigated. An exhaustive audit
+of every `Text()` interpolation in ui/ against the AnimeEntry field
+shape did not surface an actual code path that could render the
+literal "null" string. The most plausible explanation is that the user
+is on an older installed APK (pre-v0.8.3 hotfix). If the issue
+reproduces after a fresh v0.8.4 install the next round should be a
+screenshot-driven repro.
+
+User explicitly approved push of this commit despite the unverified
+runtime: "Okay you can push it." Per prior instruction, an
+external emulator / device logcat run is the recommended verification
+path (project HAFFHOFF: no `./gradlew` in CLI; CI = release.yml only).

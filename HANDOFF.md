@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v0.8.3](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.3)  
+> **Latest documented release:** [v0.8.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.4)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -198,6 +198,7 @@ Quick reference for what's new since the last documented release.
 | Score scale | Hard-formatted as out-of-10 (★ 7.5) | `data/ScoreScale.kt` enum + `ScoreDisplay` object; `FilterChip` toggle on Profile (OUT_OF_10 ↔ OUT_OF_100); Detail/ScorePickerDialog + AnimeCard honor the choice |
 | Tierlist readout | "S / Elo 1500" on every card | Tier letter + `"#3 of 8"` rank-within-tier; naked Elo replaced on cards, tier headers, vs-mode cards |
 | Sync handlers | Hand-rolled POST with Dalvik UA + 0-timeout + missing `Accept` (Cloudflare 403) | `openPost(url, token?)` helper: 15 s connect / 30 s read timeout, `MangoList/<ver>` User-Agent, `Accept: application/json`, `Connection: close`; applied to syncUserList, saveEntry, exchangeCodeForToken, getAiringSchedule |
+| SaveMediaListEntry arg schema | `score:Float` (user’s scoring-format-dependent; rejected for non-POINT_10_DECIMAL AniList accounts) | `scoreRaw:Int` (format-agnostic 0-100 raw value); plus 200-OK `errors[]` detection, non-200 diagnostic context, deleted-data fallback log |
 
 **Code anchors** for navigating the v0.8+ work:
 - `AniListClient.saveEntry` — the hand-rolled POST in `data/AniListClient.kt` (around the "Push a single AnimeEntry edit back to AniList" doc-comment).
