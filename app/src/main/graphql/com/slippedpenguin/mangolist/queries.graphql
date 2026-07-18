@@ -158,6 +158,45 @@ query GetAiringSchedule($airingAtGreater: Int!, $airingAtLesser: Int!) {
   }
 }
 
+# Discover-style sorted lists for the Explore tab's horizontal carousels.
+# Each query returns ~25 Media items sans status / progress — Explore is a
+# browsing surface, not a tracking surface, so AnimeCardFields is enough to
+# render cover + title + format + year + averageScore for the poster cards.
+# Per-page sizes are tuned for ~5 cards visible across the screen at once on
+# a typical phone, with the next 20 rendering as you scroll the LazyRow.
+
+query GetPopularAnime {
+  Page(perPage: 25) {
+    media(type: ANIME, sort: [POPULARITY_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
+query GetTrendingAnime {
+  Page(perPage: 25) {
+    media(type: ANIME, sort: [TRENDING_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
+query GetUpcomingAnime {
+  Page(perPage: 25) {
+    media(type: ANIME, status: NOT_YET_RELEASED, sort: [START_DATE_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
+query GetTopRatedAnime {
+  Page(perPage: 25) {
+    media(type: ANIME, sort: [SCORE_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
 fragment AnimeCardFields on Media {
   id
   title { romaji english }

@@ -2,10 +2,10 @@ package com.slippedpenguin.mangolist.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Leaderboard
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.TravelExplore
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -26,7 +26,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.slippedpenguin.mangolist.ui.screens.AddScreen
+import com.slippedpenguin.mangolist.ui.screens.ExploreScreen
 import com.slippedpenguin.mangolist.ui.screens.AiringScreen
 import com.slippedpenguin.mangolist.ui.screens.DetailScreen
 import com.slippedpenguin.mangolist.ui.screens.ProfileScreen
@@ -43,8 +43,8 @@ sealed class BottomDest(
     val label:  String,
     val icon:   ImageVector,
 ) {
-    data object Watchlist : BottomDest("watchlist", "Watch",  Icons.Outlined.Visibility)
-    data object Add       : BottomDest("add",       "Add",    Icons.Outlined.Add)
+    data object Watchlist : BottomDest("watchlist", "Watch",   Icons.Outlined.Visibility)
+    data object Explore   : BottomDest("explore", "Explore", Icons.Outlined.TravelExplore)
     data object Tiers     : BottomDest("tiers",     "Tiers",  Icons.Outlined.Leaderboard)
     data object Airing    : BottomDest("airing",    "Airing", Icons.Outlined.CalendarMonth)
     data object Profile   : BottomDest("profile",   "Profile", Icons.Outlined.Person)
@@ -52,7 +52,7 @@ sealed class BottomDest(
 
 private val bottomDestinations = listOf(
     BottomDest.Watchlist,
-    BottomDest.Add,
+    BottomDest.Explore,
     BottomDest.Tiers,
     BottomDest.Airing,
     BottomDest.Profile,
@@ -116,7 +116,7 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             modifier = Modifier.padding(padding),
         ) {
             composable(BottomDest.Watchlist.route) { WatchlistScreen(navController) }
-            composable(BottomDest.Add.route)       { AddScreen(navController) }
+            composable(BottomDest.Explore.route)  { ExploreScreen(navController) }
             composable(BottomDest.Tiers.route)     { TiersScreen(navController) }
             composable(BottomDest.Airing.route)    {
                 AiringScreen(onNavigateDetail = { id -> navController.navigate("detail/$id") })

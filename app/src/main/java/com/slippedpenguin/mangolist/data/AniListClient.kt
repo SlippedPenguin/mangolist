@@ -5,6 +5,10 @@ import com.apollographql.apollo.ApolloClient
 import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
+import com.slippedpenguin.mangolist.graphql.GetPopularAnimeQuery
+import com.slippedpenguin.mangolist.graphql.GetTopRatedAnimeQuery
+import com.slippedpenguin.mangolist.graphql.GetTrendingAnimeQuery
+import com.slippedpenguin.mangolist.graphql.GetUpcomingAnimeQuery
 import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
 import com.slippedpenguin.mangolist.util.NetworkObserver
@@ -136,6 +140,163 @@ class AniListClient(
                 syncedAt     = null,
             )
         }
+        }
+    }
+
+    /**
+     * Build an AnimeEntry from an Apollo `AnimeCardFields` fragment for the
+     * Explore (Discover) tab. Fragment type varies per generated query, but
+     * the field shape is identical across `...AnimeCardFields` callers, so we
+     * pass the seven primitive fields individually and let the helper do the
+     * field-to-AnimeEntry mapping. The Explore surfaces never get persisted
+     * to Room — favourites and additions happen via the search bar — so the
+     * defaults are placeholders (`status = "plan"`, empty `notes`, no
+     * `syncedAt`) and never reach the Watchlist unless the user taps a card
+     * which routes to DetailScreen and triggers a real Room write there.
+     */
+    private fun buildDiscoverEntry(
+        anilistId: Int,
+        english: String?,
+        romaji: String?,
+        cover: String?,
+        coverColor: String?,
+        format: String?,
+        episodes: Int?,
+        averageScore: Int?,
+        year: Int?,
+        now: Long,
+    ): AnimeEntry = AnimeEntry(
+        anilistId     = anilistId,
+        title         = english ?: romaji ?: "Untitled",
+        cover         = cover,
+        coverColor    = coverColor,
+        format        = format,
+        episodes      = episodes,
+        averageScore  = averageScore,
+        year          = year,
+        synopsis      = null,
+        genres        = "",
+        tier          = null,
+        elo           = 1500,
+        currentEp     = 0,
+        status        = "plan",
+        notes         = "",
+        personalScore = null,
+        listEntryId   = null,
+        updatedAt     = now,
+        syncedAt      = null,
+    )
+
+    /**
+     * Fetch ~25 anime ordered by AniList's POPULARITY_DESC. Used as the
+     * top horizontal carousel on ExploreScreen. Returns an empty list on
+     * any error / offline so the screen renders a graceful placeholder.
+     */
+    suspend fun getPopular(): List<AnimeEntry> = withNetwork(emptyList()) {
+        try {
+            val response = apollo.query(GetPopularAnimeQuery()).execute()
+            val now = System.currentTimeMillis()
+            response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
+                val m = entry.animeCardFields ?: return@mapNotNull null
+                buildDiscoverEntry(
+                    anilistId    = m.id,
+                    english      = m.title?.english,
+                    romaji       = m.title?.romaji,
+                    cover        = m.coverImage?.large ?: m.coverImage?.medium,
+                    coverColor   = m.coverImage?.color,
+                    format       = m.format?.rawValue,
+                    episodes     = m.episodes,
+                    averageScore = m.averageScore,
+                    year         = m.startDate?.year,
+                    now          = now,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "getPopular failed", e)
+            emptyList()
+        }
+    }
+
+    /** TRENDING_DESC carousel. Same shape as `getPopular`. */
+    suspend fun getTrending(): List<AnimeEntry> = withNetwork(emptyList()) {
+        try {
+            val response = apollo.query(GetTrendingAnimeQuery()).execute()
+            val now = System.currentTimeMillis()
+            response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
+                val m = entry.animeCardFields ?: return@mapNotNull null
+                buildDiscoverEntry(
+                    anilistId    = m.id,
+                    english      = m.title?.english,
+                    romaji       = m.title?.romaji,
+                    cover        = m.coverImage?.large ?: m.coverImage?.medium,
+                    coverColor   = m.coverImage?.color,
+                    format       = m.format?.rawValue,
+                    episodes     = m.episodes,
+                    averageScore = m.averageScore,
+                    year         = m.startDate?.year,
+                    now          = now,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "getTrending failed", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * NOT_YET_RELEASED + START_DATE_DESC — the "Coming soon" carousel.
+     * Returns episodes = null for most rows (AniList hasn't reported a final
+     * count yet); the poster card tolerates this since it never renders
+     * progress.
+     */
+    suspend fun getUpcoming(): List<AnimeEntry> = withNetwork(emptyList()) {
+        try {
+            val response = apollo.query(GetUpcomingAnimeQuery()).execute()
+            val now = System.currentTimeMillis()
+            response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
+                val m = entry.animeCardFields ?: return@mapNotNull null
+                buildDiscoverEntry(
+                    anilistId    = m.id,
+                    english      = m.title?.english,
+                    romaji       = m.title?.romaji,
+                    cover        = m.coverImage?.large ?: m.coverImage?.medium,
+                    coverColor   = m.coverImage?.color,
+                    format       = m.format?.rawValue,
+                    episodes     = m.episodes,
+                    averageScore = m.averageScore,
+                    year         = m.startDate?.year,
+                    now          = now,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "getUpcoming failed", e)
+            emptyList()
+        }
+    }
+
+    /** SCORE_DESC carousel — AniList's all-time top rated anime. */
+    suspend fun getTopRated(): List<AnimeEntry> = withNetwork(emptyList()) {
+        try {
+            val response = apollo.query(GetTopRatedAnimeQuery()).execute()
+            val now = System.currentTimeMillis()
+            response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
+                val m = entry.animeCardFields ?: return@mapNotNull null
+                buildDiscoverEntry(
+                    anilistId    = m.id,
+                    english      = m.title?.english,
+                    romaji       = m.title?.romaji,
+                    cover        = m.coverImage?.large ?: m.coverImage?.medium,
+                    coverColor   = m.coverImage?.color,
+                    format       = m.format?.rawValue,
+                    episodes     = m.episodes,
+                    averageScore = m.averageScore,
+                    year         = m.startDate?.year,
+                    now          = now,
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("AniListClient", "getTopRated failed", e)
+            emptyList()
         }
     }
 

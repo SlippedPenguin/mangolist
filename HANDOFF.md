@@ -33,15 +33,16 @@ mangolist/
 │   │   │       ├── AnimeDao.kt      # Room DAO (observeAll / observeById / observeByTier / upsertAll / update)
 │   │   │       └── AnimeDatabase.kt # Room holder (v2 schema, destructive migration)
 │   │   └── ui/
-│   │       ├── Navigation.kt        # NavHost + bottom nav (Watch, Add, Tiers, Airing, Profile)
+│   │       ├── Navigation.kt        # NavHost + bottom nav (Watch, Explore, Tiers, Airing, Profile)
 │   │       ├── screens/
 │   │       │   ├── ProfileScreen.kt # AniHyou-parity stats (local-computed) + login/sync UI
 │   │       │   ├── DetailScreen.kt  # Hero/banner/metadata/synopsis/characters/relations + tracking card
 │   │       │   ├── WatchlistScreen.kt # Flat list of all Room entries
-│   │       │   ├── AddScreen.kt     # Debounced AniList search → +Add
+│   │       │   ├── ExploreScreen.kt  # Search bar + Popular/Trending/Coming Soon/Top Rated carousels, debounced search
 │   │       │   ├── TiersScreen.kt   # Long-press → tier-picker sheet → VS-mode (3 Elo matches)
-│   │       │   └── AiringScreen.kt  # 7-day schedule, grouped by day, countdown
-│   │       ├── components/          # AnimeCard, EloBadge, StatusPill (shared)
+│   │       │   └── AiringScreen.kt  # 7-day schedule, "On my list"/"All airing" filter tabs, per-card progress badge
+│   │       ├── components/          # AnimeCard (list row), AnimePosterCard (carousel poster), EloBadge, StatusPill (shared)
+│   │       └── theme/               # MangoTheme (dark-only), tier/status color maps
 │   │       └── theme/               # MangoTheme (dark-only), tier/status color maps
 │   └── graphql/com/slippedpenguin/mangolist/queries.graphql  # Apollo queries + SaveMediaListEntry mutation
 ├── .github/workflows/release.yml    # CI: builds APK on tag push, attaches to GitHub Release
@@ -120,11 +121,11 @@ mangolist/
   - If the target tier has **≥ 3 opponents**, open `VsModeDialog`: three rounds of head-to-head tapping, each driven by `EloEngine.update`.
   - Each pick highlights the winner for ~900ms then advances.
   - Otherwise (target tier empty or < 3 entries) commit immediately with `elo = INITIAL_ELO`.
-- After 3 matches, the root entry gets `tier = target, elo = finalElo`; opponent entries with mutated elos are written back in the same flow (sequential `dao.update` calls — not wrapped in a Room `@Transaction`).
+- After 3 matches, the root entry gets `tier = target, elo = finalElo`; opponent entries with mutated elos are written back in the same flow (sequential `dao.update` calls — not wrapped in a Room `@Transaction`).### Airing Schedule
 
-### Airing Schedule
 - `AniListClient.getAiringSchedule()` fetches next 7 days of airing anime (max 50 slots)
 - `AiringScreen` groups by day (Today / Tomorrow / `EEE, MMM d`), shows a per-card countdown ("in 3d 12h" / "in 12h 30m" / "Airing now"), and ticks every 60s so the countdown stays fresh
+- Top-level tabs: **On my list** (filters slots by animeId present in local Room) and **All airing** (raw schedule). The `On my list` cards surface the user's progress (`Your: 3 / 12`) next to the episode number.
 - Tap → `navController.navigate("detail/$animeId")`
 
 ### Offline Mode
@@ -150,15 +151,32 @@ mangolist/
 
 ### High priority
 
+1. **Per-screen polish backlog** — the v1.0 round shipped the Explore feature
+   switch and AiringUI tabs; the remaining quality items live here. The
+   Airing `'On my list'` filter relies on the v0.6 `GetAiringSchedule`
+   response, which returns `media { id }` only — to enrich cards with the
+   AniList averagescore / status / banner the `'All airing'` path needs a
+   separate `Page.media` call keyed off the same `airingSchedules.media.id`
+   so the cards stop showing the placeholder cover color when AsyncImage
+   fails to fetch.
+
 ### Medium priority
 
-1. **Favorites / collection view** — a tab or surface for marking favorites across the user's list. Currently no favorites concept.
+1. **Push notifications (AniHyou parity)** — Low #3 churned into Medium once
+   the user-requested polling became obvious. Best path: OneTimeWorkRequest
+   keyed off each anime's `nextAiringEpisode.airingAt`, scheduled from
+   `MainActivity.onResume` and after each local edit in `DetailScreen` —
+   fires local notification `'Episode N of TITLE airing today'` + small
+   action to open DetailScreen. FCM is overkill for a personal-use app.
+2. **Discover sections beyond the big four** — Genre / Tag filters
+   (`Action`, `Romance`, `Isekai`, …). AniList's `Page.media(genre_in: ...)`
+   accepts a genre list. One genre chip strip + reusable `AnimePosterCard`
+   + a single `getByGenre(genre)` Apollo query covers the whole space.
 
 ### Low priority
 
-3. **Push notifications** for airing episodes (FCM / WorkManager scheduling per `AiringSlot.airingAt`).
-4. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
-5. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
+1. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
+2. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
 
 ---
 
@@ -203,6 +221,26 @@ Quick reference for what's new since the last documented release.
 | Watchlist list filter | Flat dump of every anime in `updatedAt DESC` order, no filtering | `ScrollableTabRow` above the list: All / Watching / Completed / Planning / Dropped / Paused / Repeating, each tab shows its count |
 | Per-card sync feedback | None (user couldn’t see if a local edit was queued) | `AnimeCard.showSyncPending = true` renders a small cloud-upload icon next to the title when `syncedAt == null \|\| updatedAt > syncedAt` |
 | Per-card edit feedback | None | `AnimeCard.showRelativeTimestamp = true` adds an "Edited 2h ago" line via `android.text.format.DateUtils` |
+
+## v1.0 deltas (since v0.9.0)
+
+| Area | v0.9.0 | v1.0 (working tree) |
+|---|---|---|
+| `Add` → `Explore` | Bottom-bar `Add` tab was a single AniList search field with `+ Add` rows; route `'add'`, `Icons.Outlined.Add`. | Route renamed `'explore'`, label `Explore`, icon `Icons.Outlined.TravelExplore`. `AddScreen.kt` deleted; `ExploreScreen.kt` (~250 LOC) opens with a sticky search bar plus four AniList carousels stacked underneath: **Popular** (`POPULARITY_DESC`), **Trending** (`TRENDING_DESC`), **Coming Soon** (`NOT_YET_RELEASED` + `START_DATE_DESC`), **Top Rated** (`SCORE_DESC`). When the user types ≥ 2 chars, the carousels hide and the screen swaps to a vertical list of search hits — same `+ Add` flow as before. |
+| `AnimePosterCard` component | n/a — `AnimeCard` was the only card component. | New file `ui/components/AnimePosterCard.kt`. 140dp poster block + title beneath (2 lines) + year/format row; average-score badge in top-right renders the AniList raw 0–100 score (no emojis, per v0.9 UI brief). Tap routes to `DetailScreen`. Distinct from `AnimeCard` because carousels need vertical-stacked posters, not the 56×80 cover-thumbnail row that the Watchlist / Tiers use. |
+| Carousel fetch concurrency | n/a (single search only). | Four `AniListClient.getXxx()` calls run in parallel inside `ExploreScreen`, via `coroutineScope { awaitAll(async {...}, async {...}, async {...}, async {...}) }`. Sequential fetch is ~800 ms for 4 queries; parallel lands at ~300 ms — the dominant cost is socket RTT to AniList, not per-query work. |
+| `AniListClient` Apollo surface | `SearchAnime`, `GetMediaDetails`, `GetViewer`, `GetMediaListCollection`, `SaveMediaListEntry`, `ToggleFavourite`. | Adds four new queries: `GetPopularAnime`, `GetTrendingAnime`, `GetUpcomingAnime`, `GetTopRatedAnime`. All bind `Page.media { ...AnimeCardFields }` for type-safety parity with `search()`. The `Page → AnimeEntry` mapping is centralised in a private `buildDiscoverEntry(...)` helper so each new query is a ~25-line wrapper rather than a ~50-line copy-paste. |
+| `AiringScreen` filter | One screen, all-airing slots grouped by day. | Top-level `TabRow` switches between **On my list** and **All airing**. The `On my list` filter observes Room's `observeAll()` flow and intersects `slot.animeId` with the user's local `anilistId` set, so it stays in sync without manual refresh. Card progress badge added: when a slot's anime is in the local list, the card shows e.g. `Your: 3 / 12` next to `Ep 5`, so the user can tell at-a-glance which anime are due for a `+` tap. |
+| Airing offline behaviour | Falls back to a v0.5-style placeholder on fetch error; `OfflineBanner` shown. | Same fallback text but rewritten per-tab ("Nothing on your list is airing this week" vs. "No airing schedule available right now") so users can tell at-a-glance whether the empty state is a local-tracked-list issue or a network issue. |
+
+**Code anchors**:
+- `ui/screens/ExploreScreen.kt` — new file, full screen impl.
+- `ui/components/AnimePosterCard.kt` — new component.
+- `ui/screens/AiringScreen.kt` — `AiringMode` enum + `TabRow` + `progressByAnimeId` lookup map.
+- `data/AniListClient.kt` — `buildDiscoverEntry` helper + `getPopular` / `getTrending` / `getUpcoming` / `getTopRated`.
+- `graphql/com/slippedpenguin/mangolist/queries.graphql` — four new Apollo operations, all bound to `...AnimeCardFields`.
+
+---
 
 ## v0.9+ deltas (since v0.8.5)
 
