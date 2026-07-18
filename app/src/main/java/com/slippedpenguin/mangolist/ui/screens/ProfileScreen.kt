@@ -15,15 +15,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,6 +75,7 @@ import java.util.Locale
  *   - Genre distribution, format distribution, year distribution
  *   - Sign-in / Sync CTA
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val context = LocalContext.current
@@ -86,8 +91,9 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
     var viewer by remember { mutableStateOf<com.slippedpenguin.mangolist.data.AnimeViewer?>(null) }
     var viewerLoading by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(accessToken) {
+    suspend fun refreshViewer() {
         val tok = accessToken
         if (!tok.isNullOrBlank()) {
             viewerLoading = true
@@ -101,15 +107,45 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         }
     }
 
+    LaunchedEffect(accessToken) {
+        refreshViewer()
+    }
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            try {
+                refreshViewer()
+                val tok = accessToken
+                val id  = userId
+                if (!tok.isNullOrBlank() && !id.isNullOrBlank()) {
+                    val result = app.anilistClient.syncUserList(tok, id.toInt())
+                    if (result.entries != null) {
+                        val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                        val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                        app.database.animeDao().upsertAll(merged)
+                    }
+                }
+            } finally {
+                isRefreshing = false
+            }
+        }
+    }
+
     val stats = remember(entries) { computeLocalStats(entries) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { if (!isRefreshing) isRefreshing = true },
+        modifier = Modifier.fillMaxSize(),
     ) {
-        OfflineBanner()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            OfflineBanner()
         // Avatar + greeting
         AsyncImage(
             model = avatarUrl,
@@ -365,7 +401,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sync now (v0.6)") }
+            ) { Text("Sync now") }
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
                 onClick = {
@@ -376,6 +412,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sign out", color = StatusDropped) }
+            }
         }
     }
 }

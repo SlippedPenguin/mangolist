@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -89,6 +90,10 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         dao.observeByTier(tier).collectAsState(initial = emptyList())
     }
     val unranked by dao.observeUnranked().collectAsState(initial = emptyList())
+    val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
+    val userId      by app.tokenStore.userId.collectAsState(initial = null)
+
+    var isRefreshing by remember { mutableStateOf(false) }
 
     // Tier-picker sheet state — non-null means a long-press is in flight.
     var longPressEntry by remember { mutableStateOf<AnimeEntry?>(null) }
@@ -188,11 +193,33 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                val tok = accessToken
+                val id  = userId
+                if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
+                scope.launch {
+                    isRefreshing = true
+                    try {
+                        val result = app.anilistClient.syncUserList(tok, id.toInt())
+                        if (result.entries != null) {
+                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            app.database.animeDao().upsertAll(merged)
+                        }
+                    } finally {
+                        isRefreshing = false
+                    }
+                }
+            },
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            EloEngine.TIERS.forEach { tier ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(vertical = 8.dp),
+            ) {
+                EloEngine.TIERS.forEach { tier ->
                 val entries = byTier[tier]?.value ?: emptyList()
                 item(key = "header_$tier") {
                     TierHeader(
@@ -217,13 +244,14 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     eloRange = eloRangeOf(unranked),
                 )
             }
-            items(unranked, key = { it.anilistId }) { entry ->
-                AnimeCard(
-                    entry = entry,
-                    rankText = null,
-                    onClick = { navController.navigate("detail/${entry.anilistId}") },
-                    onLongClick = { longPressEntry = entry },
-                )
+                items(unranked, key = { it.anilistId }) { entry ->
+                    AnimeCard(
+                        entry = entry,
+                        rankText = null,
+                        onClick = { navController.navigate("detail/${entry.anilistId}") },
+                        onLongClick = { longPressEntry = entry },
+                    )
+                }
             }
         }
     }

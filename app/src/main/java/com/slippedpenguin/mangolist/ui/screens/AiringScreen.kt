@@ -20,13 +20,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,20 +63,35 @@ import java.util.concurrent.TimeUnit
  *
  * Falls back to the v0.5 placeholder on any fetch error.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AiringScreen(
     onNavigateDetail: ((Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
+    val scope = rememberCoroutineScope()
 
     var slots by remember { mutableStateOf<List<AiringSlot>?>(null) }
     var loading by remember { mutableStateOf(true) }
     var now by remember { mutableStateOf(System.currentTimeMillis() / 1000) } // epoch seconds
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    suspend fun reload() {
         slots = app.anilistClient.getAiringSchedule()
         loading = false
+        now = System.currentTimeMillis() / 1000
+    }
+
+    LaunchedEffect(Unit) {
+        reload()
+    }
+
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
+            reload()
+            isRefreshing = false
+        }
     }
 
     // Tick every 60s to keep the countdown fresh.
@@ -86,63 +104,74 @@ fun AiringScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         OfflineBanner()
-        when {
-            loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                if (!isRefreshing) {
+                    scope.launch { reload() }
+                    isRefreshing = true
                 }
-            }
-            slots == null || slots!!.isEmpty() -> {
-                // Fallback placeholder — same as v0.5 stub.
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                ) {
-                    Text(
-                        text = "Airing this week",
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "No airing schedule available right now. Pull to refresh or check back later.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            when {
+                loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
                 }
-            }
-            else -> {
-                val items = slots!!
-                // Group by day
-                val grouped = items.groupBy { dayBucket(it.airingAt) }
-                val days = grouped.keys.sorted()
+                slots == null || slots!!.isEmpty() -> {
+                    // Fallback placeholder — same as v0.5 stub.
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                    ) {
+                        Text(
+                            text = "Airing this week",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = "No airing schedule available right now. Pull to refresh or check back later.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                else -> {
+                    val items = slots!!
+                    // Group by day
+                    val grouped = items.groupBy { dayBucket(it.airingAt) }
+                    val days = grouped.keys.sorted()
 
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 8.dp),
-                ) {
-                    days.forEach { dayLabel ->
-                        val daySlots = grouped[dayLabel].orEmpty()
-                        item(key = "header_$dayLabel") {
-                            Text(
-                                text = dayLabel.uppercase(),
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                ),
-                                color = Accent,
-                                modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
-                            )
-                        }
-                        items(daySlots, key = { "air_${it.id}" }) { slot ->
-                            AiringCard(
-                                slot = slot,
-                                now = now,
-                                onClick = { onNavigateDetail?.invoke(slot.animeId) },
-                            )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                    ) {
+                        days.forEach { dayLabel ->
+                            val daySlots = grouped[dayLabel].orEmpty()
+                            item(key = "header_$dayLabel") {
+                                Text(
+                                    text = dayLabel.uppercase(),
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                    ),
+                                    color = Accent,
+                                    modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
+                                )
+                            }
+                            items(daySlots, key = { "air_${it.id}" }) { slot ->
+                                AiringCard(
+                                    slot = slot,
+                                    now = now,
+                                    onClick = { onNavigateDetail?.invoke(slot.animeId) },
+                                )
+                            }
                         }
                     }
                 }

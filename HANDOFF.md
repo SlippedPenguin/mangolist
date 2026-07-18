@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v0.7.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.7.4)  
+> **Latest documented release:** [v0.8.2](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.2)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -133,6 +133,13 @@ mangolist/
 - `DetailScreen` falls back to a `MediaDetails` built from the cached `AnimeEntry` when `getMediaDetails()` returns null, so locally saved anime remain viewable offline.
 - `OfflineBanner` is shown on `DetailScreen`, `AddScreen`, `AiringScreen`, and `ProfileScreen` whenever the device loses connectivity.
 
+### Pull-to-Refresh
+- All four top-level surfaces (`WatchlistScreen`, `TiersScreen`, `AiringScreen`, `ProfileScreen`) now wrap their content in Material3 `PullToRefreshBox` (BOM 2024.12.01 / Material3 1.3.x).
+- **Watchlist / Tiers** — refresh re-runs `AniListClient.syncUserList(token, userId)`, merges results through `AnimeEntry.preserveLocalFields`, and `upsertAll`s into Room; existing `Flow<List<AnimeEntry>>` keeps observers in sync.
+- **Airing** — refresh re-fetches `AniListClient.getAiringSchedule()`; the 60s countdown tick continues to refresh `now` after the load.
+- **Profile** — refresh re-fetches `getViewer()` *and* re-runs the user-list sync. `Profile`'s root `Column` was extended with `verticalScroll(rememberScrollState())` so the PTR indicator can intercept gestures on the previously-static layout.
+- Refresh is a no-op when the user is signed out — the gesture still fires, but the request bails early.
+
 ### CI/CD
 - Push a `v*` tag → GitHub Actions builds release APK → uploads to GitHub Release
 - Uses Gradle 8.11.1 via `gradle/actions/setup-gradle@v4` (no gradlew committed)
@@ -145,15 +152,13 @@ mangolist/
 
 ### Medium priority
 
-1. **Pull-to-refresh** on `WatchlistScreen`, `TiersScreen`, `AiringScreen`, and the stats section of `ProfileScreen`. None of these currently wrap their content in a `PullToRefreshBox` (or `pullRefresh` modifier). Today only `Profile`'s "Sync now" button explicitly re-fetches from AniList. Airing's slot data only refreshes on screen-load.
-
-2. **Favorites / collection view** — a tab or surface for marking favorites across the user's list. Currently no favorites concept.
+1. **Favorites / collection view** — a tab or surface for marking favorites across the user's list. Currently no favorites concept.
 
 ### Low priority
 
-4. **Push notifications** for airing episodes (FCM / WorkManager scheduling per `AiringSlot.airingAt`).
-5. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
-6. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
+3. **Push notifications** for airing episodes (FCM / WorkManager scheduling per `AiringSlot.airingAt`).
+4. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
+5. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
 
 ---
 
@@ -189,6 +194,9 @@ Quick reference for what's new since the last documented release.
 | JSON parsing | `.jsonPrimitive`/`jsonObject` throws on `JsonNull` | Safe casts throughout (already in v0.7.4, carried forward) |
 | ProfileScreen | Placeholder avatar + local stats only | Cached avatar URL, live AniList viewer stats card, sign-out button |
 | Auto-push | Manual "Sync to AniList" only | `SyncWorker` drains `updatedAt > syncedAt` entries automatically; Sync button no longer tier-gated |
+| Pull-to-refresh | None (Watchlist/Tiers listed local Room data; Airing one-shot; Profile button only) | `PullToRefreshBox` on all 4 top-level screens; room observe-flows auto-refresh; Airing re-runs `getAiringSchedule`; Profile re-runs viewer fetch + list sync |
+| Score scale | Hard-formatted as out-of-10 (★ 7.5) | `data/ScoreScale.kt` enum + `ScoreDisplay` object; `FilterChip` toggle on Profile (OUT_OF_10 ↔ OUT_OF_100); Detail/ScorePickerDialog + AnimeCard honor the choice |
+| Tierlist readout | "S / Elo 1500" on every card | Tier letter + `"#3 of 8"` rank-within-tier; naked Elo replaced on cards, tier headers, vs-mode cards |
 
 **Code anchors** for navigating the v0.8+ work:
 - `AniListClient.saveEntry` — the hand-rolled POST in `data/AniListClient.kt` (around the "Push a single AnimeEntry edit back to AniList" doc-comment).
