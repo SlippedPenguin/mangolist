@@ -107,12 +107,7 @@ fun AiringScreen(
         OfflineBanner()
         PullToRefreshBox(
             isRefreshing = isRefreshing,
-            onRefresh = {
-                if (!isRefreshing) {
-                    scope.launch { reload() }
-                    isRefreshing = true
-                }
-            },
+            onRefresh = { if (!isRefreshing) isRefreshing = true },
             modifier = Modifier.fillMaxSize(),
         ) {
             when {

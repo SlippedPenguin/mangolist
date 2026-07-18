@@ -1,0 +1,26 @@
+fix(v0.8.2): drop redundant scope.launch in AiringScreen onRefresh
+
+CI 29623210480 (the v0.8.2 tag-triggered run after the PullToRefreshBox
+commit) failed at compileReleaseKotlin:
+
+  e: AiringScreen.kt:111:27 Unresolved reference 'launch'
+  e: AiringScreen.kt:111:36 Suspend function 'reload()' should be
+                            called only from a coroutine
+
+Root cause: AiringScreen's onRefresh handler originally did
+
+  scope.launch { reload() }
+  isRefreshing = true
+
+Without the kotlinx.coroutines.launch extension, kotlinc couldn't
+resolve the dispatch call. Adding the import alone is the minimum but
+the design also had a double-call bug: refresh fires reload() once
+inline AND once via LaunchedEffect(isRefreshing).
+
+Fix: drop the redundant `scope.launch { reload() }` from onRefresh.
+isRefreshing = true alone drives the LaunchedEffect, so reload()
+fires exactly once per pull.
+
+No behaviour change for the user; refresh still re-runs the shared
+suspend fun reload() which both the initial load and pull-to-refresh
+consume.
