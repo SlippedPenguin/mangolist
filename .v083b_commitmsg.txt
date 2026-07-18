@@ -1,0 +1,25 @@
+fix(v0.8.3): split merged saveEntry line that kotlinc refused
+
+CI run 29624834889 (the v0.8.3 tag-triggered build) failed at
+compileReleaseKotlin:
+
+  e: AniListClient.kt:509:81 Unexpected tokens
+     (use ';' to separate expressions on the same line)
+
+Root cause: in the v0.8.3 saveEntry str_replace, the new
+`val conn = openPost(...)` line was placed on the same physical line
+as the previous `val body = json.encodeToString(...)`. kotlinc cannot
+have two top-level val-declarations on the same line without a `;`
+separator, and idiomatic Kotlin doesn't use those — so the compiler
+hard-rejected the file.
+
+Fix: split the merged line back into two lines with a blank separator
+
+                val body = json.encodeToString(JsonObject.serializer(), payload)
+
+                val conn = openPost("https://graphql.anilist.co", token)
+
+Verified by full file audit: no other `val x = ... val y = ...`
+collapses anywhere in AniListClient.kt. The 3 other call sites
+(syncUserList / exchangeCodeForToken / getAiringSchedule) all retain
+their proper line breaks.

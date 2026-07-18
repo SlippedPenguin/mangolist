@@ -506,7 +506,9 @@ class AniListClient(
                     put("variables", variables)
                 }
                 val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-                val body = json.encodeToString(JsonObject.serializer(), payload)                val conn = openPost("https://graphql.anilist.co", token)
+                val body = json.encodeToString(JsonObject.serializer(), payload)
+
+                val conn = openPost("https://graphql.anilist.co", token)
                 conn.outputStream.use { it.write(body.toByteArray()) }
 
                 if (conn.responseCode !in 200..299) {
