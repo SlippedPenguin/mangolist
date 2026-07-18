@@ -1,0 +1,30 @@
+v0.8.5: Anihyou-parity UX polish
+
+- TopAppBar added to every bottom-nav route (titled with the current
+  destination). Mirrors the existing `isOnBottomNav` gate so Detail
+  keeps the full window for its hero image.
+- WatchlistScreen now has a status-segmented ScrollableTabRow above the
+  list. Tabs: All / Watching / Completed / Planning / Dropped / Paused /
+  Repeating. Each tab label includes its bucket count. Empty-list state
+  is split between "your watchlist is empty entirely" and "this status
+  bucket is empty, switch tabs".
+- AnimeCard gains two opt-in UX extras (defaults preserved for callers
+  already using it):
+    * `showSyncPending = true` renders a small cloud-upload icon next
+      to the title when the entry has a local edit not yet pushed to
+      AniList (syncedAt == null OR updatedAt > syncedAt).
+    * `showRelativeTimestamp = true` renders an "Edited 2h ago" line
+      via android.text.format.DateUtils.
+  Watchlist passes both flags; Tiers passes neither so its rows stay
+  compact.
+- HANDOFF.md+v0.8+ deltas table extended with the four UX rows above.
+- versionCode 4->5, versionName 0.8.4 -> 0.8.5.
+
+Build verified by:
+- brace balance == 0 across edited files (Navigation, AnimeCard,
+  WatchlistScreen)
+- grep hygiene: no double-`val`-on-one-line, no leftover
+  non-Raw score:Float references saved during v0.8.4
+- Kotlin compiler still in scope of the existing import graph
+  (added: ScrollableTabRow, Tab, TopAppBar, Icon, DateUtils,
+  CloudUpload, TextMuted, Accent)

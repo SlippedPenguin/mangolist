@@ -7,12 +7,14 @@ import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Leaderboard
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -58,18 +60,30 @@ private val bottomDestinations = listOf(
 
 /*
  * Root Scaffold + NavHost.
- *   - Bottom bar shows only when we're on a top-level route (Detail hides it
- *     to give the hero image real estate).
- *   - `restoreState = true` keeps each tab's scroll position when switching.
+ *   - Top app bar mirrors the bottom bar's `isOnBottomNav` gate so the
+ *     Detail screen's hero image keeps the full window.
+ *   - Bottom nav uses `restoreState = true` to preserve scroll position
+ *     per tab when switching.
+ *   - The app bar's title is the route's `label` so adding a new tab is
+ *     just one entry in `BottomDest`.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
 
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val isOnBottomNav = bottomDestinations.any { it.route == currentRoute }
+    val currentTitle = bottomDestinations.firstOrNull { it.route == currentRoute }?.label
 
     Scaffold(
+        topBar = {
+            if (isOnBottomNav && currentTitle != null) {
+                TopAppBar(
+                    title = { Text(text = currentTitle) },
+                )
+            }
+        },
         bottomBar = {
             if (isOnBottomNav) {
                 NavigationBar(
