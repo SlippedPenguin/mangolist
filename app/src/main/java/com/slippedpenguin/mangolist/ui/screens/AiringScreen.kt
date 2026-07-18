@@ -16,10 +16,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -60,30 +64,26 @@ import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 /*
- * Airing — v1.0.1: 7-day schedule from AniList's GetAiringSchedule, plus
+ * Airing — v1.0.2: 7-day schedule from AniList's GetAiringSchedule, plus
  * a per-anime `On my list` lookup that hits `Media.nextAiringEpisode`
- * for every anime in the user's tracking list.
+ * for every anime in the user's tracking list, *and* a top-bar Sync
+ * button that freshens the local Room list without forcing the user to
+ * route to Profile.
  *
- * v1.0's first attempt filtered the bulk 50-slot global schedule by the
- * user's local `anilistId` map. That failed because AniList's `perPage:50`
- * cap lets popular shows crowd out the user's tracked show if their next
- * episode isn't in the busiest 7-day window — the user reported
- * "I'm watching a show that's airing but it doesn't show up". The
- * per-anime path queries show-by-show with `id_in`, so a user's show is
- * always retrievable regardless of global volume.
+ * v1.0.1 first attempt: per-anime path with no in-place sync. If the user's
+ * local list was stale (they added a show on AniList website but never
+ * tapped Sync), `trackedIds` was empty and the per-anime lookup returned
+ * nothing even though AniList has the show. This v1.0.2 adds a Sync
+ * action that pulls fresh data straight from AniList into Room. After
+ * sync, Room emits new entries, `trackedIds` recomputes, and the
+ * per-anime lookup re-fires automatically.
  *
- * Two modes:
- *   - "On my list"  — `AniListClient.getNextAiringFor(trackedIds)` per
- *                     anime's `nextAiringEpisode`. No 7-day window. Empty
- *                     `nextAiringEpisode` is filtered.
- *                     Statuses included: `plan`, `watching`, `paused`,
- *                     `repeating`. Excluded: `completed`, `dropped`.
- *   - "All airing" — the original v0.6 7-day bulk schedule, paginated
- *                     one-shot via `getAiringSchedule()`.
+ * Two modes (unchanged from v1.0.1):
+ *   - "On my list"  — `AniListClient.getNextAiringFor(trackedIds)`.
+ *                     Statuses: `plan`, `watching`, `paused`, `repeating`.
+ *   - "All airing" — `getAiringSchedule()` 7-day bulk query.
  *
- * `AiringCard` is unchanged: it still reads `progressByAnimeId[animeId]`
- * for the "Your: 3 / 12" badge regardless of which slab of slots
- * generated the row.
+ * `AiringCard` is unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,29 +101,70 @@ fun AiringScreen(
     var now by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
     var mode by remember { mutableStateOf(AiringMode.ON_MY_LIST) }
 
+    // Auth state — drives whether the Sync button is visible. The user has
+    // to be logged in to pull a fresh list from AniList.
+    //
+    // TokenStore exposes `accessToken: Flow<String?>` (not `token`!) and
+    // `userId: Flow<String?>` — DataStore Preferences stores only primitives,
+    // so userId is a String that we parse to Int here. Both flows are
+    // nullable because Preferences.get-or-null defaults to missing.
+    val token by app.tokenStore.accessToken.collectAsState(initial = null)
+    val userIdStr by app.tokenStore.userId.collectAsState(initial = null)
+    val userId = remember(userIdStr) { userIdStr?.toIntOrNull() ?: 0 }
+
+    var isSyncing by remember { mutableStateOf(false) }
+    var lastSyncError by remember { mutableStateOf<String?>(null) }
+
+    // Local list snapshot for both "On my list" filtering and the per-card
+    // progress badge.
     val localEntries by app.database.animeDao()
         .observeAll()
         .collectAsState(initial = emptyList())
 
-    // Pre-compute the lookup map once per Room emission so AiringCard's
-    // "Your: 3 / 12" badge stays cheap. The map is no longer used to
-    // filter slots (the per-anime path replaces v1.0's client-side filter)
-    // — only for the progress badge.
     val progressByAnimeId = remember(localEntries) {
         localEntries.associate { it.anilistId to it }
     }
 
-    // Tracked-IDs derived from Room. Filters out statuses that don't have
-    // expected upcoming episodes: completed shows are done, dropped shows
-    // are users' signal that they don't want updates.
+    // Tracked IDs from Room. Excludes `completed` and `dropped` since the
+    // user signaled no future episodes are wanted for those.
     val trackedIds = remember(localEntries) {
         localEntries
             .filter { it.status in listOf("plan", "watching", "paused", "repeating") }
             .map { it.anilistId }
     }
 
-    // Initial parallel fetch on first composition. Both slabs load
-    // concurrently so switching tabs is instant after that.
+    /**
+     * Pull the user's anime list fresh from AniList and upsert into Room,
+     * preserving local-only tier/elo. After upsert, the Room Flow re-emits
+     * `localEntries`, which re-keys `trackedIds`, which re-fires
+     * `LaunchedEffect(trackedIds)` and re-runs the per-anime airing query.
+     * The whole chain is automatic — no manual refresh needed.
+     */
+    suspend fun syncNow() {
+        // Smart-cast `token` once into a non-null local. After this, `t`
+        // is `String` (not `String?`), so downstream calls don't need `!!`.
+        val t = token ?: return
+        if (t.isBlank() || userId <= 0 || isSyncing) return
+        isSyncing = true
+        lastSyncError = null
+        try {
+            val result = app.anilistClient.syncUserList(t, userId)
+            if (result.error != null) {
+                lastSyncError = result.error
+            } else if (result.entries != null) {
+                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                val merged = result.entries.map { incoming ->
+                    incoming.preserveLocalFields(existing[incoming.anilistId])
+                }
+                app.database.animeDao().upsertAll(merged)
+            }
+        } catch (e: Exception) {
+            lastSyncError = e.message ?: "Sync failed"
+        } finally {
+            isSyncing = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         coroutineScope {
             launch { allSlots = app.anilistClient.getAiringSchedule() }
@@ -136,17 +177,11 @@ fun AiringScreen(
         now = System.currentTimeMillis() / 1000
     }
 
-    // When the local list changes (add / edit / delete / status flip), only
-    // re-fetch the "On my list" slab — the global schedule doesn't depend
-    // on the user's list. This LaunchedEffect re-fires on every localEntries
-    // change. Its first fire (with `localEntries = emptyList()`) is a
-    // no-op because `getNextAiringFor(emptyList())` is fast-fail.
     LaunchedEffect(trackedIds) {
         myListSlots = if (trackedIds.isEmpty()) emptyList()
                       else app.anilistClient.getNextAiringFor(trackedIds)
     }
 
-    // Pull-to-refresh re-fetches both slabs in parallel.
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
             coroutineScope {
@@ -161,7 +196,6 @@ fun AiringScreen(
         }
     }
 
-    // Tick every 60s to keep the countdown fresh.
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
@@ -177,6 +211,46 @@ fun AiringScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         OfflineBanner()
+
+        // Top utility row: trailing Sync-from-AniList button so the user
+        // can freshen local data without leaving the screen. Discoverable
+        // because it's right above the tab strip; visible even when local
+        // list is empty.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!token.isNullOrBlank() && userId > 0) {
+                IconButton(
+                    onClick = { scope.launch { syncNow() } },
+                    enabled = !isSyncing,
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Sync,
+                            contentDescription = "Sync from AniList",
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
+        }
+
+        lastSyncError?.let { err ->
+            Text(
+                text = "Sync failed: $err",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+        }
 
         TabRow(
             selectedTabIndex = mode.ordinal,
@@ -220,27 +294,38 @@ fun AiringScreen(
                             .padding(24.dp),
                     ) {
                         Text(
-                            text = when (mode) {
-                                AiringMode.ON_MY_LIST -> {
-                                    when {
-                                        localEntries.isEmpty() ->
-                                            "Add or sync some anime first — the airing tab is empty without a local list."
-                                        trackedIds.isEmpty() ->
-                                            "None of your tracking shows are still airing." +
-                                                " Mark a show as Completed or Dropped to clear it from this view."
-                                        else ->
-                                            "None of your tracking shows have an upcoming episode scheduled."
-                                    }
-                                }
-                                AiringMode.ALL        -> "No airing schedule available right now."
+                            text = when {
+                                mode == AiringMode.ON_MY_LIST &&
+                                    localEntries.isEmpty() ->
+                                    "Your local list is empty."
+                                mode == AiringMode.ON_MY_LIST &&
+                                    trackedIds.isEmpty() ->
+                                    "None of your shows are still airing. Mark a show as Completed or Dropped to clear it from this view."
+                                mode == AiringMode.ON_MY_LIST ->
+                                    "None of your tracking shows have a published next episode yet."
+                                mode == AiringMode.ALL ->
+                                    "No airing schedule available right now."
+                                else ->
+                                    "Nothing to display."
                             },
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = when (mode) {
-                                AiringMode.ON_MY_LIST -> "Pull to refresh, or add a still-airing show to your list."
-                                AiringMode.ALL        -> "Pull to refresh or check back later."
+                            text = when {
+                                mode == AiringMode.ON_MY_LIST &&
+                                    localEntries.isEmpty() &&
+                                    !token.isNullOrBlank() ->
+                                    "Tap the Sync icon at the top-right to pull your AniList list into the app."
+                                mode == AiringMode.ON_MY_LIST &&
+                                    localEntries.isEmpty() ->
+                                    "Sign in from the Profile tab, then tap Sync to pull your AniList list."
+                                mode == AiringMode.ON_MY_LIST ->
+                                    "Wait for AniList to publish the next schedule, or tap Sync to retry."
+                                mode == AiringMode.ALL ->
+                                    "Pull to refresh or check back later."
+                                else ->
+                                    ""
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -287,13 +372,7 @@ fun AiringScreen(
 
 private enum class AiringMode { ON_MY_LIST, ALL }
 
-/*
- * Day-bucket label: "Today", "Tomorrow", "Wed, Jul 15", etc.
- */
 private fun dayBucket(epochSec: Long): String {
-    val cal = java.util.Calendar.getInstance(TimeZone.getDefault()).apply {
-        timeInMillis = epochSec * 1000
-    }
     val nowCal = java.util.Calendar.getInstance(TimeZone.getDefault())
     val diffDays = ((epochSec / 86400) - (nowCal.timeInMillis / 86400 / 1000)).toInt()
     return when (diffDays) {
