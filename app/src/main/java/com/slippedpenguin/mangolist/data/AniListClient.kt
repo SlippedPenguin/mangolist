@@ -48,6 +48,40 @@ class AniListClient(
         .build()
 
     /**
+     * Opens a POST [HttpURLConnection] pre-configured for AniList. The hand-rolled
+     * sync paths went silent on v0.8.2 because the default `Dalvik/2.1.0` User-Agent
+     * tripped Cloudflare's bot challenge (HTTP 403) and missing timeouts left the
+     * connection hanging in captive-portal networks. This helper bakes in:
+     *
+     *   - explicit connectTimeout / readTimeout so a stalled CDN doesn't pin the
+     *     ioScope / SyncWorker forever;
+     *   - a custom User-Agent (`MangoList/<version>`), which Cloudflare accepts
+     *     while the framework-default Dalvik UA is blocked;
+     *   - `Accept: application/json` (was missing on saveEntry / getAiringSchedule);
+     *   - `Connection: close` so we never inherit a half-dead pooled connection
+     *     from a previous request (the classic EOFException on Android 8-10).
+     *
+     * Callers still `.use{}` the input/error streams and parse the body; the
+     * `.use{}` closure releases the socket on exit, which is sufficient for
+     * AniList responses on modern Android.
+     */
+    private fun openPost(url: String, bearerToken: String? = null): HttpURLConnection {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.connectTimeout = 15_000
+        conn.readTimeout = 30_000
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("User-Agent", "MangoList/${BuildConfig.VERSION_NAME}")
+        conn.setRequestProperty("Connection", "close")
+        if (!bearerToken.isNullOrBlank()) {
+            conn.setRequestProperty("Authorization", "Bearer $bearerToken")
+        }
+        conn.doOutput = true
+        return conn
+    }
+
+    /**
      * Fast-fail helper. Runs [block] when online, otherwise returns the
      * supplied [default] sentinel. This avoids long DNS timeouts and gives
      * callers a predictable offline result.
@@ -186,12 +220,7 @@ class AniListClient(
             }
             val body = json.encodeToString(JsonObject.serializer(), payload)
 
-            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Authorization", "Bearer $token")
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Accept", "application/json")
-            conn.doOutput = true
+            val conn = openPost("https://graphql.anilist.co", token)
             conn.outputStream.use { it.write(body.toByteArray()) }
 
             val responseCode = conn.responseCode
@@ -412,11 +441,7 @@ class AniListClient(
                 }
                 val body = json.encodeToString(JsonObject.serializer(), payload)
     
-                val conn = URL("https://anilist.co/api/v2/oauth/token").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.setRequestProperty("Accept", "application/json")
-                conn.doOutput = true
+                val conn = openPost("https://anilist.co/api/v2/oauth/token")
                 conn.outputStream.use { it.write(body.toByteArray()) }
     
                 if (conn.responseCode !in 200..299) {
@@ -481,17 +506,12 @@ class AniListClient(
                     put("variables", variables)
                 }
                 val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-                val body = json.encodeToString(JsonObject.serializer(), payload)
-    
-                val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
-                conn.requestMethod = "POST"
-                conn.setRequestProperty("Authorization", "Bearer $token")
-                conn.setRequestProperty("Content-Type", "application/json")
-                conn.doOutput = true
+                val body = json.encodeToString(JsonObject.serializer(), payload)                val conn = openPost("https://graphql.anilist.co", token)
                 conn.outputStream.use { it.write(body.toByteArray()) }
-    
+
                 if (conn.responseCode !in 200..299) {
-                    android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}")
+                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode}: ${errorBody.take(200)}")
                     return null
                 }
                 val responseBody = conn.inputStream.bufferedReader().readText()
@@ -542,10 +562,7 @@ class AniListClient(
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
             val body = json.encodeToString(JsonObject.serializer(), payload)
 
-            val conn = URL("https://graphql.anilist.co").openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.doOutput = true
+            val conn = openPost("https://graphql.anilist.co")
             conn.outputStream.use { it.write(body.toByteArray()) }
 
             if (conn.responseCode !in 200..299) return emptyList()

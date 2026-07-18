@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v0.8.2](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.2)  
+> **Latest documented release:** [v0.8.3](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.8.3)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -197,6 +197,7 @@ Quick reference for what's new since the last documented release.
 | Pull-to-refresh | None (Watchlist/Tiers listed local Room data; Airing one-shot; Profile button only) | `PullToRefreshBox` on all 4 top-level screens; room observe-flows auto-refresh; Airing re-runs `getAiringSchedule`; Profile re-runs viewer fetch + list sync |
 | Score scale | Hard-formatted as out-of-10 (★ 7.5) | `data/ScoreScale.kt` enum + `ScoreDisplay` object; `FilterChip` toggle on Profile (OUT_OF_10 ↔ OUT_OF_100); Detail/ScorePickerDialog + AnimeCard honor the choice |
 | Tierlist readout | "S / Elo 1500" on every card | Tier letter + `"#3 of 8"` rank-within-tier; naked Elo replaced on cards, tier headers, vs-mode cards |
+| Sync handlers | Hand-rolled POST with Dalvik UA + 0-timeout + missing `Accept` (Cloudflare 403) | `openPost(url, token?)` helper: 15 s connect / 30 s read timeout, `MangoList/<ver>` User-Agent, `Accept: application/json`, `Connection: close`; applied to syncUserList, saveEntry, exchangeCodeForToken, getAiringSchedule |
 
 **Code anchors** for navigating the v0.8+ work:
 - `AniListClient.saveEntry` — the hand-rolled POST in `data/AniListClient.kt` (around the "Push a single AnimeEntry edit back to AniList" doc-comment).

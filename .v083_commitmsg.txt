@@ -1,0 +1,54 @@
+fix(v0.8.3): sync handlers stopped working — restore Cloudflare / TLS compat
+
+User report from v0.8.2: "the syncing error that keeps appearing when
+I try to sync with anilist or anything for that matter. None of the
+sync buttons work."
+
+Root cause: every hand-rolled HttpURLConnection POST in
+app/src/main/java/com/slippedpenguin/mangolist/data/AniListClient.kt
+sent a default Dalvik User-Agent, which AniList's Cloudflare front
+bot-challenges with HTTP 403. The same code path also had a 0-second
+default connect/read Timeout (Android's HttpURLConnection default —
+infinite), so any stalled CDN handshake pinned the worker / ioScope
+forever, which looked identical to "the button does nothing" to the
+user. saveEntry and getAiringSchedule were additionally missing the
+`Accept: application/json` header some intermediary proxies reject, and
+HttpURLConnection's connection-pool reuse was occasionally returning
+half-closed sockets from a prior request (EOFException on Android
+8-10).
+
+Fix: collapse the four inline connection-setup blocks into a single
+`openPost(url, bearerToken?)` helper that bakes in
+  - User-Agent:        MangoList/<versionName>          (Cloudflare-friendly)
+  - connectTimeout:    15_000 ms
+  - readTimeout:       30_000 ms
+  - Accept:            application/json               (was missing on saveEntry / airing)
+  - Connection:        close                          (avoids keep-alive socket reuse)
+  - Content-Type:      application/json
+  - Authorization:     Bearer <token>                 (only when bearerToken non-blank)
+
+Call sites rewritten:
+  - syncUserList   → openPost("https://graphql.anilist.co", token)
+  - exchangeCodeForToken → openPost("https://anilist.co/api/v2/oauth/token")
+  - saveEntry      → openPost("https://graphql.anilist.co", token)
+                     (also: error log now includes an error-body excerpt
+                      so non-200 saves are readable in logcat)
+  - getAiringSchedule → openPost("https://graphql.anilist.co")
+
+The existing `.use {}` on outputStream / inputStream / errorStream
+still releases the socket; combined with `Connection: close`, no
+explicit `.disconnect()` is needed on modern Android.
+
+Applies to ALL sync paths:
+  - ProfileScreen "Sync now" button
+  - WatchlistScreen / TiersScreen pull-to-refresh
+  - ProfileScreen pull-to-refresh
+  - DetailScreen "Sync to AniList" button
+  - SyncWorker auto-push of dirty Room edits
+  - MainActivity.handleAuthRedirect post-login pipeline
+  - AiringScreen getAiringSchedule (was 0% reachable from CF on certain
+    networks)
+
+build.gradle.kts: versionCode=3, versionName="0.8.3".
+HANDOFF.md: latest documented release bumped to v0.8.3; new row in
+the v0.8+ deltas table for "Sync handler reconciliation".
