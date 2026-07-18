@@ -9,7 +9,10 @@ import com.slippedpenguin.mangolist.graphql.GetViewerQuery
 import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
 import com.slippedpenguin.mangolist.util.NetworkObserver
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.double
