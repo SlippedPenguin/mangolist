@@ -2,8 +2,11 @@ package com.slippedpenguin.mangolist.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
@@ -25,7 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
-import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.AnimeCard
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -75,7 +78,6 @@ fun AnimeTabScreen(navController: NavController) {
             }
         }
 
-        // Pull-to-refresh wrapper: syncs the user's ANIME list from AniList.
         PullToRefreshBox(
             isRefreshing = isRefreshing,
             onRefresh = {
@@ -110,10 +112,7 @@ fun AnimeTabScreen(navController: NavController) {
 }
 
 /*
- * Lightweight wrapper that shows the WatchlistScreen content filtered
- * to mediaType=ANIME. We reuse the existing WatchlistScreen composable
- * but force `selectedMediaType` to "ANIME" and hide the All/Anime/Manga
- * chip strip so the user can't switch to manga from the Anime tab.
+ * Lightweight wrapper that shows the anime-only watchlist.
  */
 @Composable
 private fun AnimeWatchlistContent(navController: NavController) {
@@ -122,7 +121,6 @@ private fun AnimeWatchlistContent(navController: NavController) {
     val entries by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
-    // Force ANIME filter; hide the media-type chip strip.
     val filtered = remember(entries) { entries.filter { it.mediaType == "ANIME" } }
 
     if (filtered.isEmpty()) {
@@ -130,9 +128,7 @@ private fun AnimeWatchlistContent(navController: NavController) {
             modifier = Modifier.fillMaxSize().padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
-            androidx.compose.foundation.layout.Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = if (entries.isEmpty()) "No anime in your list" else "No anime in this view",
                     style = MaterialTheme.typography.titleMedium,
@@ -148,12 +144,12 @@ private fun AnimeWatchlistContent(navController: NavController) {
             }
         }
     } else {
-        androidx.compose.foundation.lazy.LazyColumn(
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            androidx.compose.foundation.lazy.items(filtered, key = { it.anilistId }) { entry ->
-                com.slippedpenguin.mangolist.ui.components.AnimeCard(
+            items(filtered, key = { it.anilistId }) { entry ->
+                AnimeCard(
                     entry = entry,
                     onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                     showSyncPending = true,
@@ -166,13 +162,9 @@ private fun AnimeWatchlistContent(navController: NavController) {
 }
 
 /*
- * Lightweight wrapper that shows the ExploreScreen content forced to
- * mediaType=ANIME. Uses the same carousel logic but with a locked
- * segmented-control value set to "ANIME".
+ * Lightweight wrapper that shows ExploreScreen forced to ANIME.
  */
 @Composable
 private fun AnimeExploreContent(navController: NavController) {
-    // Just call ExploreScreen — it already handles type selection.
-    // We use the default mediaType which is "ANIME".
     ExploreScreen(navController, forcedMediaType = "ANIME")
 }

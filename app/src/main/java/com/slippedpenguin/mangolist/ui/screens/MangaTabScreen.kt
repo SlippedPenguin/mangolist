@@ -2,8 +2,11 @@ package com.slippedpenguin.mangolist.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
@@ -25,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
+import com.slippedpenguin.mangolist.ui.components.AnimeCard
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -104,8 +108,7 @@ fun MangaTabScreen(navController: NavController) {
 }
 
 /*
- * Lightweight wrapper that shows WatchlistScreen content filtered to
- * mediaType=MANGA. Hides the All/Anime/Manga chip strip.
+ * Lightweight wrapper that shows manga-only watchlist.
  */
 @Composable
 private fun MangaWatchlistContent(navController: NavController) {
@@ -137,12 +140,12 @@ private fun MangaWatchlistContent(navController: NavController) {
             }
         }
     } else {
-        androidx.compose.foundation.lazy.LazyColumn(
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            androidx.compose.foundation.lazy.items(filtered, key = { it.anilistId }) { entry ->
-                com.slippedpenguin.mangolist.ui.components.AnimeCard(
+            items(filtered, key = { it.anilistId }) { entry ->
+                AnimeCard(
                     entry = entry,
                     onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                     showSyncPending = true,
@@ -155,7 +158,7 @@ private fun MangaWatchlistContent(navController: NavController) {
 }
 
 /*
- * Lightweight wrapper that shows ExploreScreen forced to mediaType=MANGA.
+ * Lightweight wrapper that shows ExploreScreen forced to MANGA.
  */
 @Composable
 private fun MangaExploreContent(navController: NavController) {
