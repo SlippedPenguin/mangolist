@@ -400,7 +400,7 @@ class AniListClient(
      * "Discover" carousels when the user toggles the segmented media-type
      * control to "MANGA" or "BOTH" with the upcoming carousel promoted.
      */
-    suspend fun getMangaReleases(perPage: Int = 50): List<AnimeEntry> = withNetwork(emptyList()) {
+    suspend fun getMangaReleases(): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
             withContext(Dispatchers.IO) {
                 // GetMangaReleasesQuery has no GraphQL variables — the
