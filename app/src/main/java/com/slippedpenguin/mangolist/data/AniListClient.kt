@@ -405,9 +405,9 @@ class AniListClient(
             withContext(Dispatchers.IO) {
                 // GetMangaReleasesQuery has no GraphQL variables — the
                 // .graphql hardcodes perPage:50, so Apollo Kotlin generates
-                // a parameterless constructor. We still let callers cap the
-                // page size via getMangaReleases(perPage = N), but the
-                // ceiling is currently bounded by the GraphQL literal.
+                // a parameterless constructor. The wrapper intentionally
+                // exposes no perPage arg either; the page size is owned by
+                // the schema literal.
                 val response = apollo.query(GetMangaReleasesQuery()).execute()
                 val now = System.currentTimeMillis()
                 response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
