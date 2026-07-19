@@ -28,6 +28,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
@@ -69,23 +71,29 @@ class AniListClient(
         .build()
 
     /**
-     * v1.2.1: Simple rate-limit gate for anonymous (no bearer token)
+     * v1.4.1: Mutex-backed rate-limit gate for anonymous (no bearer token)
      * HTTP POSTs. AniList's public API allows ~90 req/min; spacing
      * anonymous calls by at least 350ms stops the HTTP 429 cascade
      * seen on the Airing and Explore tabs. Authenticated requests
      * (which carry user-specific rate limits) don't gate here.
+     *
+     * The previous @Volatile implementation allowed parallel coroutines to
+     * race through the gate and fire simultaneous requests, which is why
+     * "All airing" often returned empty while "On my list" succeeded.
      */
-    @Volatile
+    private val anonRequestMutex = Mutex()
     private var lastAnonRequestMs: Long = 0L
 
     private suspend fun rateLimitGate() {
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastAnonRequestMs
-        val minGapMs = 350L
-        if (elapsed in 1..<minGapMs) {
-            kotlinx.coroutines.delay(minGapMs - elapsed)
+        anonRequestMutex.withLock {
+            val now = System.currentTimeMillis()
+            val elapsed = now - lastAnonRequestMs
+            val minGapMs = 350L
+            if (elapsed in 1..<minGapMs) {
+                kotlinx.coroutines.delay(minGapMs - elapsed)
+            }
+            lastAnonRequestMs = System.currentTimeMillis()
         }
-        lastAnonRequestMs = System.currentTimeMillis()
     }
 
     /**
@@ -652,14 +660,11 @@ class AniListClient(
         // like 7.7*10 = 76.999... doesn't truncate to 76.
         val personalScore = score?.let { (it * 10).roundToInt() }
 
-        // Manga has `chapters` instead of `episodes`. For manga we read
-        // `chapters`; for anime, `episodes`.
-        val totalUnits = if (resolvedType == "MANGA") {
-            (media["chapters"] as? kotlinx.serialization.json.JsonPrimitive)?.int
-                ?: (media["volumes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
-        } else {
-            (media["episodes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
-        }
+        // v1.4.1: keep anime/manga progress totals in their own columns
+        // so the UI can show the right unit (ep/ch/vol) and cap.
+        val episodesCount  = (media["episodes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
+        val chaptersCount  = (media["chapters"] as? kotlinx.serialization.json.JsonPrimitive)?.int
+        val volumesCount   = (media["volumes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
 
         return AnimeEntry(
             anilistId     = (media["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null,
@@ -670,7 +675,9 @@ class AniListClient(
                 ?: (coverImage?.get("medium") as? kotlinx.serialization.json.JsonPrimitive)?.content,
             coverColor    = (coverImage?.get("color") as? kotlinx.serialization.json.JsonPrimitive)?.content,
             format        = (media["format"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
-            episodes      = totalUnits,
+            episodes      = if (resolvedType == "ANIME") episodesCount else null,
+            chapters      = if (resolvedType == "MANGA") chaptersCount else null,
+            volumes       = if (resolvedType == "MANGA") volumesCount else null,
             averageScore  = (media["averageScore"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
             year          = (startDate?.get("year") as? kotlinx.serialization.json.JsonPrimitive)?.int,
             synopsis      = null,
@@ -840,14 +847,16 @@ class AniListClient(
                     }
                     // AniList expects `score: Float` in 0.0-10.0 range.
                     // The app stores personalScore as 0-100 integer,
-                    // so divide by 10.0 and format to one decimal place.
-                    val scoreFloat = entry.personalScore?.let { it / 10.0 }
+                    // so divide by 10.0. Send 0.0 when the local score is
+                    // cleared so AniList actually removes the rating instead
+                    // of leaving the old score unchanged.
+                    val scoreFloat = entry.personalScore?.let { it / 10.0 } ?: 0.0
                     val variables = buildJsonObject {
                         entry.listEntryId?.let { put("id", it) }
                         put("mediaId", entry.anilistId)
                         put("status", anilistStatus)
                         put("progress", entry.currentEp)
-                        scoreFloat?.let { put("score", it) }
+                        put("score", scoreFloat)
                         put("notes", entry.notes)
                     }
                     val payload = buildJsonObject {
@@ -1015,9 +1024,10 @@ class AniListClient(
                         conn.outputStream.use { it.write(body.toByteArray()) }
 
                         if (conn.responseCode !in 200..299) {
+                            val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                             android.util.Log.w(
                                 "AniListClient",
-                                "getNextAiringFor HTTP ${conn.responseCode} on batch of ${batch.size}",
+                                "getNextAiringFor HTTP ${conn.responseCode} on batch of ${batch.size}: ${errorBody.take(400)}",
                             )
                             return@flatMap emptyList<AiringSlot>()
                         }
@@ -1095,7 +1105,11 @@ class AniListClient(
                     val conn = openPost("https://graphql.anilist.co")
                     conn.outputStream.use { it.write(body.toByteArray()) }
 
-                    if (conn.responseCode !in 200..299) return@withContext emptyList()
+                    if (conn.responseCode !in 200..299) {
+                        val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        android.util.Log.w("AniListClient", "getAiringSchedule HTTP ${conn.responseCode}: ${errorBody.take(400)}")
+                        return@withContext emptyList()
+                    }
                     val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                     val root = json.parseToJsonElement(responseBody).jsonObject
                     val schedules = root["data"]?.jsonObject

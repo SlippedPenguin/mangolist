@@ -77,6 +77,8 @@ data class AnimeEntry(
     fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry = copy(
         tier = existing?.tier ?: tier,
         elo = existing?.elo ?: elo,
-        mediaType = existing?.mediaType ?: mediaType,
+        // Always trust the server/source mediaType; do not preserve a stale
+        // local ANIME default when the incoming row is actually MANGA.
+        mediaType = mediaType,
     )
 }
