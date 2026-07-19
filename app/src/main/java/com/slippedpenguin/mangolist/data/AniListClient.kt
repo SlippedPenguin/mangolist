@@ -26,6 +26,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -105,18 +107,19 @@ class AniListClient(
     suspend fun search(query: String): List<AnimeEntry> {
         if (query.isBlank()) return emptyList()
         return withNetwork(emptyList()) {
+        withContext(Dispatchers.IO) {
         val response = try {
             apollo.query(SearchAnimeQuery(search = query)).execute()
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "search failed", e)
-            return emptyList()
+            return@withContext emptyList()
         }
         // Apollo Kotlin 4.x codegen surfaces the bottom-level `media(...) { ...AnimeCardFields }`
         // selection as a `SearchAnimeQuery.Media` whose only direct property is the
         // fragment-spread wrapper `animeCardFields: AnimeCardFields?` — fragment
         // fields are NOT inlined onto Media. Pull the fragment out first.
         val now = System.currentTimeMillis()
-        return response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
+        return@withContext response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
             val m = entry.animeCardFields ?: return@mapNotNull null
             AnimeEntry(
                 anilistId    = m.id,
@@ -140,6 +143,7 @@ class AniListClient(
                 syncedAt     = null,
             )
         }
+        }  // withContext
         }
     }
 
@@ -194,6 +198,7 @@ class AniListClient(
      */
     suspend fun getPopular(): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
+            withContext(Dispatchers.IO) {
             val response = apollo.query(GetPopularAnimeQuery()).execute()
             val now = System.currentTimeMillis()
             response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
@@ -211,6 +216,7 @@ class AniListClient(
                     now          = now,
                 )
             }
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getPopular failed", e)
             emptyList()
@@ -220,6 +226,7 @@ class AniListClient(
     /** TRENDING_DESC carousel. Same shape as `getPopular`. */
     suspend fun getTrending(): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
+            withContext(Dispatchers.IO) {
             val response = apollo.query(GetTrendingAnimeQuery()).execute()
             val now = System.currentTimeMillis()
             response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
@@ -237,6 +244,7 @@ class AniListClient(
                     now          = now,
                 )
             }
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getTrending failed", e)
             emptyList()
@@ -251,6 +259,7 @@ class AniListClient(
      */
     suspend fun getUpcoming(): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
+            withContext(Dispatchers.IO) {
             val response = apollo.query(GetUpcomingAnimeQuery()).execute()
             val now = System.currentTimeMillis()
             response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
@@ -268,6 +277,7 @@ class AniListClient(
                     now          = now,
                 )
             }
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getUpcoming failed", e)
             emptyList()
@@ -277,6 +287,7 @@ class AniListClient(
     /** SCORE_DESC carousel — AniList's all-time top rated anime. */
     suspend fun getTopRated(): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
+            withContext(Dispatchers.IO) {
             val response = apollo.query(GetTopRatedAnimeQuery()).execute()
             val now = System.currentTimeMillis()
             response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
@@ -294,6 +305,7 @@ class AniListClient(
                     now          = now,
                 )
             }
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getTopRated failed", e)
             emptyList()
@@ -313,8 +325,9 @@ class AniListClient(
                 .addHttpHeader("Authorization", "Bearer $token")
                 .build()
             return try {
+                withContext(Dispatchers.IO) {
                 val response = authClient.query(GetViewerQuery()).execute()
-                val v = response.data?.Viewer ?: return null
+                val v = response.data?.Viewer ?: return@withContext null
                 AnimeViewer(
                     id = v.id,
                     name = v.name,
@@ -325,6 +338,7 @@ class AniListClient(
                     episodesWatched = v.statistics?.anime?.episodesWatched,
                     minutesWatched = v.statistics?.anime?.minutesWatched,
                 )
+                }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "getViewer failed", e)
                 null
@@ -347,6 +361,7 @@ class AniListClient(
         if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
         return withNetwork(SyncResult(null, "No internet connection.")) {
         try {
+            withContext(Dispatchers.IO) {
             val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
             val payload = buildJsonObject {
                 put(
@@ -398,14 +413,14 @@ class AniListClient(
             if (responseCode !in 200..299) {
                 val msg = "HTTP $responseCode: ${responseBody.take(200)}"
                 android.util.Log.w("AniListClient", "syncUserList $msg")
-                return SyncResult(null, msg)
+                return@withContext SyncResult(null, msg)
             }
 
             val root = (json.parseToJsonElement(responseBody) as? JsonObject)
                 ?: run {
                     val msg = "Response is not a JSON object: ${responseBody.take(200)}"
                     android.util.Log.w("AniListClient", "syncUserList $msg")
-                    return SyncResult(null, msg)
+                    return@withContext SyncResult(null, msg)
                 }
 
             // Surface GraphQL errors even when HTTP is 200.
@@ -413,7 +428,7 @@ class AniListClient(
             if (errors != null && errors.isNotEmpty()) {
                 val msg = errors.joinToString(", ") { ((it as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "GraphQL error" }
                 android.util.Log.w("AniListClient", "syncUserList GraphQL errors: $msg")
-                return SyncResult(null, msg)
+                return@withContext SyncResult(null, msg)
             }
 
             val nowMillis = System.currentTimeMillis()
@@ -421,13 +436,13 @@ class AniListClient(
                 ?.get("MediaListCollection")
             // MediaListCollection can be null if the user has no lists.
             if (collection == null || collection is kotlinx.serialization.json.JsonNull) {
-                return SyncResult(emptyList(), null)
+                return@withContext SyncResult(emptyList(), null)
             }
             val collObj = (collection as? JsonObject)
                 ?: run {
                     val msg = "MediaListCollection is not an object: ${collection.toString().take(200)}"
                     android.util.Log.w("AniListClient", "syncUserList $msg")
-                    return SyncResult(null, msg)
+                    return@withContext SyncResult(null, msg)
                 }
             val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                 ?.filterIsInstance<JsonObject>()
@@ -440,6 +455,7 @@ class AniListClient(
                 ?.mapNotNull { entry -> parseMediaListEntry(entry, nowMillis) }
                 .orEmpty()
             SyncResult(entries, null)
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.e("AniListClient", "syncUserList failed: ${e.javaClass.simpleName}", e)
             SyncResult(null, e.message ?: "Unknown sync error (${e.javaClass.simpleName})")
@@ -517,12 +533,14 @@ class AniListClient(
         if (id <= 0) return null
         return withNetwork(null) {
             val response = try {
-                apollo.query(GetMediaDetailsQuery(id = id)).execute()
+                withContext(Dispatchers.IO) {
+                    apollo.query(GetMediaDetailsQuery(id = id)).execute()
+                }
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "getMediaDetails failed for $id", e)
-                return null
+                return@withNetwork null
         }
-        val m = response.data?.Media ?: return null
+        val m = response.data?.Media ?: return@withNetwork null
         val cf = m.animeCardFields
 
         val studios = m.studios?.nodes.orEmpty()
@@ -554,7 +572,7 @@ class AniListClient(
                 )
             }
 
-        return MediaDetails(
+        return@withNetwork MediaDetails(
             // Apollo Kotlin 4.x with `operationBased` codegen and a fragment
             // spread on the outer Media type puts `id` inside the
             // AnimeCardFields wrapper (no inlining) — there's no top-level `id`
@@ -594,6 +612,7 @@ class AniListClient(
         if (code.isBlank()) return null
         return withNetwork(null) {
             try {
+                withContext(Dispatchers.IO) {
                 // AniList's token endpoint expects a JSON body per the official docs.
                 // client_id must be sent as an integer (Laravel Passport rejects the
                 // string form). redirect_uri must match the registered URI exactly.
@@ -611,13 +630,14 @@ class AniListClient(
                 conn.outputStream.use { it.write(body.toByteArray()) }
     
                 if (conn.responseCode !in 200..299) {
-                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                     android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}: $errorBody")
-                    return null
+                    return@withContext null
                 }
                 val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
                 root["access_token"]?.jsonPrimitive?.content
+                }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "exchangeCodeForToken failed", e)
                 null
@@ -645,6 +665,7 @@ class AniListClient(
         if (token.isBlank()) return null
         return withNetwork(null) {
             try {
+                withContext(Dispatchers.IO) {
                 val anilistStatus = when (entry.status) {
                     "plan"      -> "PLANNING"
                     "watching"  -> "CURRENT"
@@ -678,9 +699,9 @@ class AniListClient(
                 conn.outputStream.use { it.write(body.toByteArray()) }
 
                 if (conn.responseCode !in 200..299) {
-                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                     android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode} (anilistId=${entry.anilistId}, status=${entry.status}, currentEp=${entry.currentEp}, personalScore=${entry.personalScore}, notes.len=${entry.notes.length}): ${errorBody.take(400)}")
-                    return null
+                    return@withContext null
                 }
                 val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
@@ -691,13 +712,13 @@ class AniListClient(
                         ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
                     }
                     android.util.Log.w("AniListClient", "saveEntry GraphQL errors (anilistId=${entry.anilistId}): $msgs")
-                    return null
+                    return@withContext null
                 }
                 val saveNode = root["data"]?.jsonObject?.get("SaveMediaListEntry")?.jsonObject ?: run {
                     android.util.Log.w("AniListClient", "saveEntry response has no data.SaveMediaListEntry: ${responseBody.take(400)}")
-                    return null
+                    return@withContext null
                 }
-                val id = (saveNode["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null
+                val id = (saveNode["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return@withContext null
                 val updatedAtSeconds = (saveNode["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
                 val notesElement = saveNode["notes"]
                 val returnedNotes = when (notesElement) {
@@ -710,6 +731,7 @@ class AniListClient(
                     updatedAtSeconds = updatedAtSeconds,
                     notes = returnedNotes,
                 )
+                }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "saveEntry failed", e)
                 null
@@ -749,6 +771,7 @@ class AniListClient(
         if (token.isBlank()) return null
         return withNetwork(null) {
             try {
+                withContext(Dispatchers.IO) {
                 val variables = buildJsonObject {
                     put("animeId", animeId)
                 }
@@ -768,12 +791,12 @@ class AniListClient(
                 conn.outputStream.use { it.write(body.toByteArray()) }
 
                 if (conn.responseCode !in 200..299) {
-                    val errorBody = conn.errorStream?.bufferedReader()?.readText() ?: ""
+                    val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                     android.util.Log.w(
                         "AniListClient",
                         "toggleFavorite HTTP ${conn.responseCode} (animeId=$animeId): ${errorBody.take(400)}",
                     )
-                    return@withNetwork null
+                    return@withContext null
                 }
                 val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
@@ -785,7 +808,7 @@ class AniListClient(
                         ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
                     }
                     android.util.Log.w("AniListClient", "toggleFavorite GraphQL errors (animeId=$animeId): $msgs")
-                    return@withNetwork null
+                    return@withContext null
                 }
 
                 // Walk: data -> ToggleFavourite -> anime -> nodes
@@ -793,12 +816,13 @@ class AniListClient(
                 val toggleNode = data?.get("ToggleFavourite") as? JsonObject
                 val anime = toggleNode?.get("anime") as? JsonObject
                 val nodes = anime?.get("nodes") as? JsonArray
-                    ?: return@withNetwork null
+                    ?: return@withContext null
                 nodes.any { node ->
                     val nodeObj = node as? JsonObject ?: return@any false
                     val id = nodeObj["id"] as? JsonPrimitive ?: return@any false
                     id.int == animeId
                 }
+                }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "toggleFavorite failed", e)
                 null
@@ -829,6 +853,7 @@ class AniListClient(
         if (mediaIds.isEmpty()) return emptyList()
         return withNetwork(emptyList()) {
             try {
+                withContext(Dispatchers.IO) {
                 val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
                 val result = mediaIds.chunked(50).flatMap { batch ->
                     val payload = buildJsonObject {
@@ -883,6 +908,7 @@ class AniListClient(
                     }
                 }
                 result
+                }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "getNextAiringFor failed", e)
                 emptyList()
@@ -895,6 +921,7 @@ class AniListClient(
         val week = now + 7 * 86400
         return withNetwork(emptyList()) {
         try {
+            withContext(Dispatchers.IO) {
             val variables = buildJsonObject {
                 put("airingAtGreater", now.toInt())
                 put("airingAtLesser", week.toInt())
@@ -914,12 +941,12 @@ class AniListClient(
             val conn = openPost("https://graphql.anilist.co")
             conn.outputStream.use { it.write(body.toByteArray()) }
 
-            if (conn.responseCode !in 200..299) return emptyList()
+            if (conn.responseCode !in 200..299) return@withContext emptyList()
             val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
             val root = json.parseToJsonElement(responseBody).jsonObject
             val schedules = root["data"]?.jsonObject
                 ?.get("Page")?.jsonObject
-                ?.get("airingSchedules")?.jsonArray ?: return emptyList()
+                ?.get("airingSchedules")?.jsonArray ?: return@withContext emptyList()
             schedules.mapNotNull { el ->
                 val obj = el.jsonObject
                 val media = obj["media"]?.jsonObject ?: return@mapNotNull null
@@ -934,6 +961,7 @@ class AniListClient(
                     coverLarge = media["coverImage"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
                 )
             }
+            }  // withContext
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getAiringSchedule failed", e)
             emptyList()
