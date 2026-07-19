@@ -108,11 +108,27 @@ fun WatchlistScreen(navController: NavController) {
             scope.launch {
                 isRefreshing = true
                 try {
-                    val result = app.anilistClient.syncUserList(tok, id.toInt())
-                    if (result.entries != null) {
+                    // v1.2.1: sync both ANIME and MANGA lists so manga
+                    // entries from AniList land in the local DB. Without
+                    // this, pull-to-refresh only pulled anime and the
+                    // manga filter chip never showed any rows.
+                    val animeResult = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
+                    val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                    val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                    if (combined.isNotEmpty()) {
                         val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                        val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                        val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                         app.database.animeDao().upsertAll(merged)
+                    }
+                    // v1.2.1: surface any sync error as a toast so the
+                    // user knows if their manga list failed to pull.
+                    val firstErr = animeResult.error ?: mangaResult.error
+                    if (firstErr != null) {
+                        android.widget.Toast.makeText(
+                            context,
+                            if (firstErr.length > 200) firstErr.take(200) + "\u2026" else firstErr,
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
                     }
                 } finally {
                     isRefreshing = false

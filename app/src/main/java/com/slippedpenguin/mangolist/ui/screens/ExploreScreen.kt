@@ -113,6 +113,7 @@ fun ExploreScreen(navController: NavController) {
     var genreResults by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var genreLoading by remember { mutableStateOf(false) }
     var requestSeq by remember { mutableStateOf(0) }
+    var firstLoad by remember { mutableStateOf(true) }
     val isOnline by app.networkObserver.isOnline.collectAsState(initial = true)
 
     suspend fun reloadCarousels() {
@@ -144,10 +145,18 @@ fun ExploreScreen(navController: NavController) {
         }
     }
 
-    LaunchedEffect(Unit) { reloadCarousels() }
-
-    // Re-fetch carousels whenever the media-type toggle changes.
-    LaunchedEffect(mediaType) { reloadCarousels() }
+    // v1.2.1: single LaunchedEffect with first-load fastpath avoids
+    // the double-fire from v1.2 where LaunchedEffect(Unit) + 
+    // LaunchedEffect(mediaType) both fired on cold composition.
+    LaunchedEffect(mediaType) {
+        if (firstLoad) {
+            firstLoad = false
+            reloadCarousels()
+            return@LaunchedEffect
+        }
+        delay(500)
+        reloadCarousels()
+    }
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {

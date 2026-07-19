@@ -148,15 +148,22 @@ fun AiringScreen(
         isSyncing = true
         lastSyncError = null
         try {
-            val result = app.anilistClient.syncUserList(t, userId)
-            if (result.error != null) {
-                lastSyncError = result.error
-            } else if (result.entries != null) {
+            // v1.2.1: sync both ANIME and MANGA so manga entries
+            // flowing from AniList arrive in Room. Without this,
+            // only anime rows land and the manga filter is empty.
+            val animeResult = app.anilistClient.syncUserList(t, userId, "ANIME")
+            val mangaResult = app.anilistClient.syncUserList(t, userId, "MANGA")
+            val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+            if (combined.isNotEmpty()) {
                 val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                val merged = result.entries.map { incoming ->
+                val merged = combined.map { incoming ->
                     incoming.preserveLocalFields(existing[incoming.anilistId])
                 }
                 app.database.animeDao().upsertAll(merged)
+            }
+            val firstErr = animeResult.error ?: mangaResult.error
+            if (firstErr != null) {
+                lastSyncError = firstErr
             }
         } catch (e: Exception) {
             lastSyncError = e.message ?: "Sync failed"

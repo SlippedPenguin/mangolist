@@ -68,6 +68,26 @@ class AniListClient(
         .build()
 
     /**
+     * v1.2.1: Simple rate-limit gate for anonymous (no bearer token)
+     * HTTP POSTs. AniList's public API allows ~90 req/min; spacing
+     * anonymous calls by at least 350ms stops the HTTP 429 cascade
+     * seen on the Airing and Explore tabs. Authenticated requests
+     * (which carry user-specific rate limits) don't gate here.
+     */
+    @Volatile
+    private var lastAnonRequestMs: Long = 0L
+
+    private suspend fun rateLimitGate() {
+        val now = System.currentTimeMillis()
+        val elapsed = now - lastAnonRequestMs
+        val minGapMs = 350L
+        if (elapsed in 1..<minGapMs) {
+            kotlinx.coroutines.delay(minGapMs - elapsed)
+        }
+        lastAnonRequestMs = System.currentTimeMillis()
+    }
+
+    /**
      * Opens a POST [HttpURLConnection] pre-configured for AniList. The
      * hand-rolled sync paths went silent on v0.8.2 because the default
      * `Dalvik/2.1.0` User-Agent tripped Cloudflare's bot challenge (HTTP
@@ -788,9 +808,15 @@ class AniListClient(
      *
      * Mappings:
      *   - status → AniList MediaListStatus enum
-     *   - personalScore / 10.0 → score Float (0-10 scale)
+     *   - personalScore / 10.0 → score Float (0-10 scale; AniList expects
+     *     Float, not Int)
      *   - notes → String (empty string clears notes on AniList)
      *   - listEntryId non-null → update; null → create new
+     *
+     * v1.2.1: Fixed the score variable name from `scoreRaw` → `score`
+     * (AniList's SaveMediaListEntry mutation declares `score: Float`,
+     * not `scoreRaw: Int`). Also converts the app's 0-100 integer to
+     * AniList's 0.0-10.0 Float before sending.
      */
     suspend fun saveEntry(token: String, entry: AnimeEntry): SaveResult? {
         if (token.isBlank()) return null
@@ -806,20 +832,24 @@ class AniListClient(
                         "repeating" -> "REPEATING"
                         else        -> "CURRENT"
                     }
+                    // AniList expects `score: Float` in 0.0-10.0 range.
+                    // The app stores personalScore as 0-100 integer,
+                    // so divide by 10.0 and format to one decimal place.
+                    val scoreFloat = entry.personalScore?.let { it / 10.0 }
                     val variables = buildJsonObject {
                         entry.listEntryId?.let { put("id", it) }
                         put("mediaId", entry.anilistId)
                         put("status", anilistStatus)
                         put("progress", entry.currentEp)
-                        entry.personalScore?.let { put("scoreRaw", it) }
+                        scoreFloat?.let { put("score", it) }
                         put("notes", entry.notes)
                     }
                     val payload = buildJsonObject {
                         put(
                             "query",
-                            "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$scoreRaw:Int,\$progress:Int,\$notes:String)" +
-                            "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,scoreRaw:\$scoreRaw,progress:\$progress,notes:\$notes)" +
-                            "{id updatedAt notes}}",
+                            "mutation(\$id:Int,\$mediaId:Int,\$status:MediaListStatus,\$score:Float,\$progress:Int,\$notes:String)" +
+                            "{SaveMediaListEntry(id:\$id,mediaId:\$mediaId,status:\$status,score:\$score,progress:\$progress,notes:\$notes)" +
+                            "{id updatedAt notes score}}",
                         )
                         put("variables", variables)
                     }
@@ -955,6 +985,7 @@ class AniListClient(
         if (mediaIds.isEmpty()) return emptyList()
         return withNetwork(emptyList()) {
             try {
+                rateLimitGate()
                 withContext(Dispatchers.IO) {
                     val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
                     val result = mediaIds.chunked(50).flatMap { batch ->
@@ -1036,6 +1067,7 @@ class AniListClient(
         val week = now + 7 * 86400
         return withNetwork(emptyList()) {
             try {
+                rateLimitGate()
                 withContext(Dispatchers.IO) {
                     val variables = buildJsonObject {
                         put("airingAtGreater", now.toInt())
