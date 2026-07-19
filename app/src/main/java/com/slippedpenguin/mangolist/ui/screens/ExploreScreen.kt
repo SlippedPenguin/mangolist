@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -66,30 +70,26 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
- * Explore — v1.1: discovery surface replacing the v0.x "Add" search-only
- * tab. Three layered modes under the search bar:
+ * Explore — v1.2: discovery surface for both anime and manga.
  *
- *   1. **Search bar query** wins outright: any time the user has typed
- *      ≥ 2 chars, the screen swaps to a vertical list of AniList search
- *      hits. The genre chip strip stays visible (so the user can pivot
- *      back) but its selection is ignored while searching.
+ *   - **Media-type segmented control** at the very top: Anime / Manga.
+ *     Toggling it re-fetches all four carousels for the chosen type.
+ *     Both modes render the same carousels with the same query surface;
+ *     only the `type` parameter passed to the carousel fetches changes.
  *
- *   2. **Genre chip selected** (search bar empty): the four carousels are
- *      hidden and a 2-column grid of `AnimePosterCard` renders for the
- *      chosen genre, fetched via AniList's `Page.media(genre_in: [...],
- *      sort: POPULARITY_DESC)`. Tap a tile routes to DetailScreen.
+ *   - **Search bar** still wins outright when active (≥ 2 chars). The
+ *     segmented control dims to 40% alpha while searching so the
+ *     precedence rule is visually obvious.
  *
- *   3. **No search, no genre chip** (the "All" chip is the implicit default):
- *      the four carousels render exactly as v1.0 shipped them.
+ *   - **Genre chip strip** sits below the search bar and respects the
+ *     active media-type for chip-driven queries.
+ *
+ *   - **Three modes in clear precedence**: search bar > selected genre >
+ *     no selection (carousels).
  *
  * Each carousel fetches independently — failures in one don't block the
  * others. Pull-to-refresh re-runs all four carousel queries (and the
  * currently-selected genre query, if any) in parallel.
- *
- * The chip strip mirrors AniHyou: one `LazyRow` of `FilterChip`s, sticky
- * under the search bar. "All" clears `selectedGenre` so the carousels come
- * back. Unknown / blank chip strings short-circuit in `AniListClient.getByGenre`
- * rather than surface a sync error toast.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,10 +99,12 @@ fun ExploreScreen(navController: NavController) {
     val scope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
+    var mediaType by remember { mutableStateOf("ANIME") }  // v1.2: "ANIME" or "MANGA"
     var popular by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var trending by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var upcoming by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var topRated by remember { mutableStateOf<List<AnimeEntry>?>(null) }
+    var mangaReleases by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<AnimeEntry>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
@@ -115,35 +117,44 @@ fun ExploreScreen(navController: NavController) {
 
     suspend fun reloadCarousels() {
         coroutineScope {
-            val (pop, trd, upc, top) = awaitAll(
-                async { app.anilistClient.getPopular() },
-                async { app.anilistClient.getTrending() },
-                async { app.anilistClient.getUpcoming() },
-                async { app.anilistClient.getTopRated() },
-            )
-            popular = pop as? List<AnimeEntry> ?: emptyList()
-            trending = trd as? List<AnimeEntry> ?: emptyList()
-            upcoming = upc as? List<AnimeEntry> ?: emptyList()
-            topRated = top as? List<AnimeEntry> ?: emptyList()
+            if (mediaType == "ANIME") {
+                val (pop, trd, upc, top) = awaitAll(
+                    async { app.anilistClient.getPopular("ANIME") },
+                    async { app.anilistClient.getTrending("ANIME") },
+                    async { app.anilistClient.getUpcoming("ANIME") },
+                    async { app.anilistClient.getTopRated("ANIME") },
+                )
+                popular = pop as? List<AnimeEntry> ?: emptyList()
+                trending = trd as? List<AnimeEntry> ?: emptyList()
+                upcoming = upc as? List<AnimeEntry> ?: emptyList()
+                topRated = top as? List<AnimeEntry> ?: emptyList()
+            } else {
+                val (pop, trd, upc, top) = awaitAll(
+                    async { app.anilistClient.getPopular("MANGA") },
+                    async { app.anilistClient.getTrending("MANGA") },
+                    async { app.anilistClient.getUpcoming("MANGA") },
+                    async { app.anilistClient.getTopRated("MANGA") },
+                )
+                popular = pop as? List<AnimeEntry> ?: emptyList()
+                trending = trd as? List<AnimeEntry> ?: emptyList()
+                upcoming = upc as? List<AnimeEntry> ?: emptyList()
+                topRated = top as? List<AnimeEntry> ?: emptyList()
+                mangaReleases = app.anilistClient.getMangaReleases()
+            }
         }
     }
 
-    LaunchedEffect(Unit) {
-        reloadCarousels()
-    }
+    LaunchedEffect(Unit) { reloadCarousels() }
+
+    // Re-fetch carousels whenever the media-type toggle changes.
+    LaunchedEffect(mediaType) { reloadCarousels() }
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            // Reload carousels AND re-fetch the current genre so a pull on
-            // a genre-filtered grid replaces stale data. The `finally` keeps
-            // the PullToRefreshBox spinner visible until both network calls
-            // resolve — without it, `scope.launch { ... }` returns
-            // synchronously and we'd flip `isRefreshing` off before the work
-            // finishes, making the spinner disappear prematurely.
             scope.launch {
                 try {
                     reloadCarousels()
-                    selectedGenre?.let { genreResults = app.anilistClient.getByGenre(it) }
+                    selectedGenre?.let { genreResults = app.anilistClient.getByGenre(it, type = mediaType) }
                 } finally {
                     isRefreshing = false
                 }
@@ -151,16 +162,12 @@ fun ExploreScreen(navController: NavController) {
         }
     }
 
-    // Update the in-list set so "+ Add" -> "Open" state on search hits is
-    // accurate without the user having to back out of Explore.
     LaunchedEffect(Unit) {
         app.database.animeDao().observeAll().collect { all ->
             inListIds = all.map { it.anilistId }.toSet()
         }
     }
 
-    // Debounced search. When query is < 2 chars, clear results. When ≥ 2,
-    // wait 350ms after the last keystroke then fire `app.anilistClient.search`.
     LaunchedEffect(query) {
         val cleaned = query.trim()
         if (cleaned.length < 2) {
@@ -170,19 +177,10 @@ fun ExploreScreen(navController: NavController) {
         }
         delay(350)
         searching = true
-        searchResults = app.anilistClient.search(cleaned)
+        searchResults = app.anilistClient.search(cleaned, mediaType)
         searching = false
     }
 
-    // Genre chip -> fetch. Every chip change fires a fresh `getByGenre`
-    // call. We deliberately don't cache results across chip selections —
-    // the user expects a fresh list per chip, and the AniList request is
-    // ~200 ms so request echo between chips feels instant.
-    //
-    // We key on both `selectedGenre` AND `isSearching`: while the search
-    // bar owns the screen, chip taps are visible-but-inert (genre mode is
-    // hidden in favour of SearchResultsList), so we short-circuit and
-    // avoid launching a backend fetch whose result would be discarded.
     LaunchedEffect(selectedGenre, isSearching) {
         if (isSearching) return@LaunchedEffect
         val g = selectedGenre ?: run {
@@ -190,14 +188,9 @@ fun ExploreScreen(navController: NavController) {
             genreLoading = false
             return@LaunchedEffect
         }
-        // Token-guard against rapid chip taps: each fetch is stamped with the
-        // current requestSeq, and only the most recent fetch may commit its
-        // results. Without this, a slow earlier fetch (e.g. "Action") could
-        // complete after a fast later one (e.g. "Romance") and overwrite the
-        // newer results, leaving the grid out of sync with the chip state.
         val mySeq = ++requestSeq
         genreLoading = true
-        val res = app.anilistClient.getByGenre(g)
+        val res = app.anilistClient.getByGenre(g, type = mediaType)
         if (mySeq == requestSeq) {
             genreResults = res
             genreLoading = false
@@ -210,14 +203,23 @@ fun ExploreScreen(navController: NavController) {
     Column(modifier = Modifier.fillMaxSize()) {
         OfflineBanner()
 
-        // Search bar — sticky at top so the chips / carousels / grid scroll under it.
+        // v1.2: media-type segmented control. Anime / Manga. Toggling
+        // switches every carousel and the genre chip strip to manga.
+        MediaTypeSegmentedControl(
+            selected = mediaType,
+            onSelect = { mediaType = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text("Search AniList…") },
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            placeholder = { Text(if (mediaType == "MANGA") "Search AniList manga…" else "Search AniList…") },
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
@@ -226,10 +228,6 @@ fun ExploreScreen(navController: NavController) {
             ),
         )
 
-        // Genre chip strip. Sticky under the search bar. "All" deselects.
-        // While searching, the chips stay visible but their choice is
-        // ignored (search bar takes precedence) and they dim to 40% alpha
-        // so the inertness is visually obvious.
         GenreChips(
             selected = selectedGenre,
             onSelect = { selectedGenre = it },
@@ -242,11 +240,9 @@ fun ExploreScreen(navController: NavController) {
             onRefresh = {
                 if (!isRefreshing) {
                     isRefreshing = true
-                    // Also re-fire search if the user is currently searching,
-                    // so the search results refresh along with the carousels.
                     if (isSearching) {
                         scope.launch {
-                            searchResults = app.anilistClient.search(query.trim())
+                            searchResults = app.anilistClient.search(query.trim(), mediaType)
                         }
                     }
                 }
@@ -277,10 +273,12 @@ fun ExploreScreen(navController: NavController) {
                     },
                 )
                 else -> CarouselColumn(
+                    mediaType = mediaType,
                     popular = popular,
                     trending = trending,
                     upcoming = upcoming,
                     topRated = topRated,
+                    mangaReleases = mangaReleases,
                     isOnline = isOnline,
                     onCardClick = { entry ->
                         navController.navigate("detail/${entry.anilistId}")
@@ -292,30 +290,40 @@ fun ExploreScreen(navController: NavController) {
 }
 
 /*
- * Curated genre list — mirrors AniHyou's Discover chip strip. Each
- * label is an exact AniList genre string (case-insensitive on AniList's
- * side, but `AniListClient.getByGenre` canonicalises to Title Case).
- * Order matches AniHyou so muscle memory transfers.
+ * v1.2: Anime / Manga segmented control. Single line of Material3
+ * `SingleChoiceSegmentedButtonRow` because that's the canonical
+ * M3 idiom — three-tier toggle pill, accent-coloured selection,
+ * stays above the search bar.
  */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MediaTypeSegmentedControl(
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val options = listOf("ANIME", "MANGA")
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        options.forEachIndexed { index, opt ->
+            SegmentedButton(
+                selected = selected == opt,
+                onClick = { onSelect(opt) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                colors = SegmentedButtonDefaults.segmentedButtonColors(
+                    activeContainerColor = Accent.copy(alpha = 0.25f),
+                ),
+            ) {
+                Text(if (opt == "ANIME") "Anime" else "Manga")
+            }
+        }
+    }
+}
+
 private val GENRES: List<String> = listOf(
-    "Action",
-    "Adventure",
-    "Comedy",
-    "Drama",
-    "Ecchi",
-    "Fantasy",
-    "Horror",
-    "Mahou Shoujo",
-    "Mecha",
-    "Music",
-    "Mystery",
-    "Psychological",
-    "Romance",
-    "Sci-Fi",
-    "Slice of Life",
-    "Sports",
-    "Supernatural",
-    "Thriller",
+    "Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy",
+    "Horror", "Mahou Shoujo", "Mecha", "Music", "Mystery",
+    "Psychological", "Romance", "Sci-Fi", "Slice of Life", "Sports",
+    "Supernatural", "Thriller",
 )
 
 @Composable
@@ -325,10 +333,6 @@ private fun GenreChips(
     searchActive: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    // While the search bar owns the screen, dim the chip strip so taps
-    // visibly feel inert (the chip LaunchedEffect no-ops in `isSearching`).
-    // The alpha animates over ~150ms so the transition feels deliberate
-    // rather than snapping when the user types or clears the search bar.
     val chipAlpha by animateFloatAsState(
         targetValue = if (searchActive) 0.4f else 1.0f,
         animationSpec = tween(durationMillis = 150),
@@ -373,8 +377,6 @@ private fun GenreGrid(
     onCardClick: (AnimeEntry) -> Unit,
 ) {
     when {
-        // Shimmer-while-loading mirrors v1.0's carousel loading state so the
-        // genre chip doesn't feel slower than the carousels below it.
         loading && items == null -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
@@ -382,15 +384,13 @@ private fun GenreGrid(
             CircularProgressIndicator()
         }
         items.isNullOrEmpty() -> Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(24.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = when {
                     !isOnline -> "Couldn't reach AniList.\nPull down to retry."
-                    else -> "No $genre anime found on AniList.\nTry another genre."
+                    else -> "No $genre matches.\nTry another genre."
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -398,22 +398,12 @@ private fun GenreGrid(
             )
         }
         else -> LazyVerticalGrid(
-            // Adaptive cells so the grid scales from a 320dp narrow phone
-            // (1 or 2 columns) to a tablet (3+ columns) without horizontal
-            // overflow. The hardcoded 140.dp poster card stays centred in
-            // each cell so the visual density matches the LazyRow carousels
-            // above.
             columns = GridCells.Adaptive(minSize = 160.dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(0.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
-            // Each cell is sized by `GridCells.Adaptive(minSize = 160.dp)`,
-            // so we pass `Modifier.fillMaxWidth()` to the card and it scales
-            // 1:1 to the cell. The Card composable inside AnimePosterCard
-            // already fills its parent's width, so the poster block grows on
-            // tablets and shrinks on narrow phones without manual math.
             gridItems(items, key = { it.anilistId }) { entry ->
                 AnimePosterCard(
                     entry = entry,
@@ -427,14 +417,17 @@ private fun GenreGrid(
 
 @Composable
 private fun CarouselColumn(
+    mediaType: String,
     popular: List<AnimeEntry>?,
     trending: List<AnimeEntry>?,
     upcoming: List<AnimeEntry>?,
     topRated: List<AnimeEntry>?,
+    mangaReleases: List<AnimeEntry>?,
     isOnline: Boolean,
     onCardClick: (AnimeEntry) -> Unit,
 ) {
     val allLoaded = popular != null && trending != null && upcoming != null && topRated != null
+    val emptyAccent = if (mediaType == "MANGA") "manga" else "anime"
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(vertical = 8.dp),
@@ -442,9 +435,7 @@ private fun CarouselColumn(
         if (!allLoaded) {
             item(key = "loading_initial") {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator()
@@ -453,11 +444,23 @@ private fun CarouselColumn(
             return@LazyColumn
         }
 
+        // Manga-only: "Releasing manga" carousel sits at the very top.
+        if (mediaType == "MANGA") {
+            item(key = "manga_releases") {
+                CarouselRow(
+                    title = "Releasing manga",
+                    items = mangaReleases.orEmpty(),
+                    emptyText = "No manga releasing this season.",
+                    onCardClick = onCardClick,
+                )
+            }
+        }
+
         item(key = "popular") {
             CarouselRow(
-                title = "Popular this season",
+                title = if (mediaType == "MANGA") "Popular this season" else "Popular this season",
                 items = popular.orEmpty(),
-                emptyText = if (isOnline) "No popular anime right now." else "Couldn't reach AniList.",
+                emptyText = if (isOnline) "No popular $emptyAccent right now." else "Couldn't reach AniList.",
                 onCardClick = onCardClick,
             )
         }
@@ -465,13 +468,13 @@ private fun CarouselColumn(
             CarouselRow(
                 title = "Trending now",
                 items = trending.orEmpty(),
-                emptyText = "No trending anime right now.",
+                emptyText = "No trending $emptyAccent right now.",
                 onCardClick = onCardClick,
             )
         }
         item(key = "upcoming") {
             CarouselRow(
-                title = "Coming soon",
+                title = if (mediaType == "MANGA") "Coming soon" else "Coming soon",
                 items = upcoming.orEmpty(),
                 emptyText = "No upcoming releases.",
                 onCardClick = onCardClick,
@@ -481,13 +484,11 @@ private fun CarouselColumn(
             CarouselRow(
                 title = "Top rated of all time",
                 items = topRated.orEmpty(),
-                emptyText = "No top-rated anime right now.",
+                emptyText = "No top-rated $emptyAccent right now.",
                 onCardClick = onCardClick,
             )
         }
-        item(key = "footer_spacer") {
-            Spacer(Modifier.height(24.dp))
-        }
+        item(key = "footer_spacer") { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -501,9 +502,7 @@ private fun CarouselRow(
     Column(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Bold,
-            ),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
             color = Accent,
             modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
         )
@@ -542,9 +541,7 @@ private fun SearchResultsList(
         loading -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator()
-        }
+        ) { CircularProgressIndicator() }
         results.isEmpty() -> Box(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             contentAlignment = Alignment.Center,
@@ -571,7 +568,11 @@ private fun SearchResultsList(
 @Composable
 private fun SearchResultRow(entry: AnimeEntry, inList: Boolean, onAdd: () -> Unit) {
     val year = entry.year?.toString().orEmpty()
-    val epLabel = entry.episodes?.let { "  $it ep" } ?: ""
+    val epLabel = if (entry.mediaType == "MANGA") {
+        entry.episodes?.let { "  $it ch" } ?: ""
+    } else {
+        entry.episodes?.let { "  $it ep" } ?: ""
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()

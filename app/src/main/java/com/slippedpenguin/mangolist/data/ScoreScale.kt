@@ -8,13 +8,19 @@ package com.slippedpenguin.mangolist.data
  * The toggle is DISPLAY ONLY: AniList still receives personalScore / 10.0
  * regardless of which scale the user picked. So no migration is required
  * when switching scales and there is no data loss.
+ *
+ * v1.2: Default flipped from OUT_OF_10 to OUT_OF_100 per user feedback —
+ * most modern trackers show 0-100 and that's what the user requested.
+ * Existing users who explicitly picked OUT_OF_10 keep that choice
+ * because TokenStore persists the scale tag; only fresh-app installs and
+ * users who never opened Profile's chip row inherit the new default.
  */
 enum class ScoreScale {
     OUT_OF_10,
     OUT_OF_100;
 
     companion object {
-        val Default: ScoreScale = OUT_OF_10
+        val Default: ScoreScale = OUT_OF_100
 
         /** Parse the DataStore-stored tag; falls back to [Default] on missing/invalid. */
         fun fromTag(tag: String?): ScoreScale = when (tag) {

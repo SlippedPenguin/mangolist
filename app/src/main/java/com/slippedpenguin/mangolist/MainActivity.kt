@@ -96,14 +96,21 @@ class MainActivity : ComponentActivity() {
                     val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
                     app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
                     if (userId > 0) {
-                        val result = app.anilistClient.syncUserList(token, userId)
-                        if (result.entries != null) {
+                        // v1.2: pull both ANIME and MANGA lists, merging into
+                        // the same Room table. AniList IDs are globally
+                        // unique so there's no key clash — each entry is
+                        // stamped with its own mediaType on upsert.
+                        val animeResult = app.anilistClient.syncUserList(token, userId, "ANIME")
+                        val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
+                        val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                        if (combined.isNotEmpty()) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                             app.database.animeDao().upsertAll(merged)
-                        } else {
-                            val err = result.error ?: "unknown"
-                            val msg = if (err.length > 150) err.take(150) + "…" else err
+                        }
+                        val firstErr = animeResult.error ?: mangaResult.error
+                        if (firstErr != null) {
+                            val msg = if (firstErr.length > 150) firstErr.take(150) + "…" else firstErr
                             runOnUiThread {
                                 android.widget.Toast.makeText(
                                     this@MainActivity,
@@ -127,16 +134,18 @@ class MainActivity : ComponentActivity() {
             val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
             app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
             if (userId > 0) {
-                val result = app.anilistClient.syncUserList(token, userId)
-                if (result.entries != null) {
-                    val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                    val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
-                    app.database.animeDao().upsertAll(merged)
-                } else {
+                val animeResult = app.anilistClient.syncUserList(token, userId, "ANIME")
+                val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
+                val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
+                app.database.animeDao().upsertAll(merged)
+                val firstErr = animeResult.error ?: mangaResult.error
+                if (firstErr != null && combined.isEmpty()) {
                     runOnUiThread {
                         android.widget.Toast.makeText(
                             this@MainActivity,
-                            "List sync failed after login: ${result.error ?: "unknown"}",
+                            "List sync failed after login: $firstErr",
                             android.widget.Toast.LENGTH_LONG,
                         ).show()
                     }

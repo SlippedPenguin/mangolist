@@ -1,9 +1,6 @@
 package com.slippedpenguin.mangolist.ui.screens
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -40,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,37 +42,38 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.EloEngine
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
-import com.slippedpenguin.mangolist.ui.theme.Accent
-import com.slippedpenguin.mangolist.ui.theme.Border
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextPrimary
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.tierColor
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
- * Tiers — vertical rail of five rows (S / A / B / C / D) plus an Unranked
- * bucket. Each row is sorted by Elo descending. The header shows the
- * live Elo range for that tier ("1850–2050") so the user gets a quick
- * sense of where their collection sits.
+ * Tiers — v1.2 simplification.
  *
- * v0.5 long-press wiring:
- *   1. Long-press any AnimeCard => ModalBottomSheet shows the five
- *      tiers + an "Unranked" option.
- *   2. Pick a target tier => if the target tier has 3+ opponents,
- *      open VsModeDialog (3 head-to-head matches driven by
- *      EloEngine.update). Otherwise pre-commit at INITIAL_ELO.
- *   3. Each match tap lights up the winner for ~900ms then advances.
- *   4. After 3 matches, the root entry gets `tier = target, elo =
- *      finalElo`; opponent entries have their elos updated in place.
+ *   - Five rows (S / A / B / C / D) + an Unranked bucket. Each row
+ *     sorted by Elo descending. Header shows the tier letter + count +
+ *     elo range hint.
+ *
+ *   - **vs-mode removed.** v0.5 had a 3-round head-to-head dialog where
+ *     picking a tier with ≥ 3 opponents would open VsModeDialog and
+ *     walk the user through 3 picks to settle the entry's Elo. The user
+ *     flagged tier-list as "kinda wack" — vs-mode was the wack part —
+ *     so we drop the entire flow: picking a tier from the bottom sheet
+ *     commits immediately with `elo = INITIAL_ELO`. No more 3-round
+ *     horse-trading ceremony. The local Elo engine still runs vs-mode
+ *     for any entry that already has a starting Elo from a previous
+ *     version (EloEngine.update is unchanged and still used by tests),
+ *     but the UI no longer surfaces the dialog.
+ *
+ *   - Tier letters stay as S/A/B/C/D (user feedback wanted the existing
+ *     labels preserved, only the ceremony simplified).
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val context = LocalContext.current
@@ -94,103 +89,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     val userId      by app.tokenStore.userId.collectAsState(initial = null)
 
     var isRefreshing by remember { mutableStateOf(false) }
-
-    // Tier-picker sheet state — non-null means a long-press is in flight.
     var longPressEntry by remember { mutableStateOf<AnimeEntry?>(null) }
-
-    // Vs-mode dialog state — non-null root opens the dialog.
-    var vsRoot       by remember { mutableStateOf<AnimeEntry?>(null) }
-    var vsTargetTier by remember { mutableStateOf<String?>(null) }
-    var vsOpponents  by remember { mutableStateOf<List<AnimeEntry>>(emptyList()) }
-    // Mutable snapshotting of mid-flow elos so we don't need to read from
-    // Room during dialog interactions.
-    var vsRootElo        by remember { mutableStateOf(1500) }
-    var vsOpponentElos   by remember { mutableStateOf(listOf<Int>()) }
-    var vsStep           by remember { mutableStateOf(0) }     // 0..2
-    var vsPicked         by remember { mutableStateOf<Int?>(null) } // 0=root, 1=opponent
-
-    fun startVsMode(entry: AnimeEntry, targetTier: String) {
-        val pool = (byTier[targetTier]?.value.orEmpty())
-            .filter { it.anilistId != entry.anilistId }
-        if (pool.size < 3) {
-            // Target tier is too sparse for vs-mode. Just commit directly.
-            scope.launch {
-                dao.update(
-                    entry.copy(
-                        tier = targetTier,
-                        elo = EloEngine.INITIAL_ELO,
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                )
-            }
-            return
-        }
-        vsRoot = entry
-        vsTargetTier = targetTier
-        vsOpponents = pool.shuffled().take(3)
-        vsOpponentElos = vsOpponents.map { it.elo }
-        vsRootElo = entry.elo
-        vsStep = 0
-        vsPicked = null
-    }
-
-    fun pickInMatch(pickedRoot: Boolean) {
-        if (vsPicked != null) return  // ignore double-tap during the reveal pause
-        val oppElo = vsOpponentElos[vsStep]
-        val upd = if (pickedRoot) EloEngine.update(vsRootElo, oppElo)
-                  else            EloEngine.update(oppElo, vsRootElo)
-        if (pickedRoot) {
-            vsRootElo = upd.newWinner
-        } else {
-            vsOpponentElos = vsOpponentElos.toMutableList().apply {
-                this[vsStep] = upd.newWinner
-            }
-        }
-        vsPicked = if (pickedRoot) 0 else 1
-        scope.launch {
-            delay(900) // reveal pause so the winner pulse is readable
-            vsPicked = null
-            if (vsStep < 2) {
-                vsStep++
-            } else {
-                val root = vsRoot
-                val tier = vsTargetTier
-                val opponents = vsOpponents
-                val oppElos = vsOpponentElos
-                val now = System.currentTimeMillis()
-                if (root != null && tier != null) {
-                    dao.update(
-                        root.copy(
-                            tier = tier,
-                            elo = vsRootElo,
-                            updatedAt = now,
-                        )
-                    )
-                    opponents.forEachIndexed { idx, op ->
-                        if (oppElos[idx] != op.elo) {
-                            dao.update(
-                                op.copy(elo = oppElos[idx], updatedAt = now)
-                            )
-                        }
-                    }
-                }
-                vsRoot = null
-                vsTargetTier = null
-                vsOpponents = emptyList()
-                vsOpponentElos = emptyList()
-                vsStep = 0
-            }
-        }
-    }
-
-    fun cancelVsMode() {
-        vsRoot = null
-        vsTargetTier = null
-        vsOpponents = emptyList()
-        vsOpponentElos = emptyList()
-        vsStep = 0
-        vsPicked = null
-    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         PullToRefreshBox(
@@ -202,10 +101,14 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 scope.launch {
                     isRefreshing = true
                     try {
-                        val result = app.anilistClient.syncUserList(tok, id.toInt())
-                        if (result.entries != null) {
+                        // v1.2: pull both ANIME and MANGA on refresh — they
+                        // share the same Room table keyed by anilistId.
+                        val animeResult = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
+                        val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                        val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                        if (combined.isNotEmpty()) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                             app.database.animeDao().upsertAll(merged)
                         }
                     } finally {
@@ -220,30 +123,32 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 EloEngine.TIERS.forEach { tier ->
-                val entries = byTier[tier]?.value ?: emptyList()
-                item(key = "header_$tier") {
+                    val entries = byTier[tier]?.value ?: emptyList()
+                    item(key = "header_$tier") {
+                        TierHeader(
+                            tier = tier,
+                            count = entries.size,
+                            eloRange = entries.minOfOrNull { it.elo }?.let { lo ->
+                                lo..(entries.maxOfOrNull { it.elo } ?: lo)
+                            },
+                        )
+                    }
+                    items(entries, key = { it.anilistId }) { entry ->
+                        AnimeCard(
+                            entry = entry,
+                            rankText = rankWithinTierText(entry, entries),
+                            onClick = { navController.navigate("detail/${entry.anilistId}") },
+                            onLongClick = { longPressEntry = entry },
+                        )
+                    }
+                }
+                item(key = "header_unranked") {
                     TierHeader(
-                        tier = tier,
-                        count = entries.size,
-                        eloRange = eloRangeOf(entries),
+                        tier = null,
+                        count = unranked.size,
+                        eloRange = null,
                     )
                 }
-                items(entries, key = { it.anilistId }) { entry ->
-                    AnimeCard(
-                        entry = entry,
-                        rankText = rankWithinTierText(entry, entries),
-                        onClick = { navController.navigate("detail/${entry.anilistId}") },
-                        onLongClick = { longPressEntry = entry },
-                    )
-                }
-            }
-            item(key = "header_unranked") {
-                TierHeader(
-                    tier = null,
-                    count = unranked.size,
-                    eloRange = eloRangeOf(unranked),
-                )
-            }
                 items(unranked, key = { it.anilistId }) { entry ->
                     AnimeCard(
                         entry = entry,
@@ -256,7 +161,8 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         }
     }
 
-    // Long-press → ModalBottomSheet with the five tier buttons.
+    // Long-press → ModalBottomSheet with the five tier buttons. Picking
+    // any tier commits the entry at INITIAL_ELO — no head-to-head rounds.
     val sheetFor = longPressEntry
     if (sheetFor != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -273,11 +179,24 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
                 )
                 EloEngine.TIERS.forEach { tier ->
+                    val inTier = byTier[tier]?.value.orEmpty()
                     TextButton(
                         onClick = {
                             val entry = sheetFor
                             longPressEntry = null
-                            startVsMode(entry, tier)
+                            // Direct commit — no vs-mode ceremony. The
+                            // entry's previous tier (if any) is replaced;
+                            // its previous Elo is reset to INITIAL_ELO so
+                            // tier rank within the new tier starts fresh.
+                            scope.launch {
+                                dao.update(
+                                    entry.copy(
+                                        tier = tier,
+                                        elo = EloEngine.INITIAL_ELO,
+                                        updatedAt = System.currentTimeMillis(),
+                                    )
+                                )
+                            }
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                     ) {
@@ -293,10 +212,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 fontWeight = FontWeight.ExtraBold,
                             )
                             Text(
-                                text = tierHint(
-                                    tier,
-                                    byTier[tier]?.value.orEmpty(),
-                                ),
+                                text = if (inTier.isEmpty()) "(empty · first in tier)" else "${inTier.size} in tier",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextMuted,
                             )
@@ -312,6 +228,25 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     }
                 }
                 TextButton(
+                    onClick = {
+                        scope.launch {
+                            sheetFor.let { e ->
+                                dao.update(
+                                    e.copy(
+                                        tier = null,
+                                        elo = EloEngine.INITIAL_ELO,
+                                        updatedAt = System.currentTimeMillis(),
+                                    )
+                                )
+                            }
+                            longPressEntry = null
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                ) {
+                    Text("Unranked", color = TextSecondary)
+                }
+                TextButton(
                     onClick = { longPressEntry = null },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 ) {
@@ -320,30 +255,13 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             }
         }
     }
-
-    // Vs-mode dialog
-    val vsModeRoot = vsRoot
-    val vsModeTarget = vsTargetTier
-    if (vsModeRoot != null && vsModeTarget != null && vsOpponents.isNotEmpty()) {
-        VsModeDialog(
-            root = vsModeRoot,
-            rootElo = vsRootElo,
-            opponent = vsOpponents[vsStep],
-            opponentElo = vsOpponentElos[vsStep],
-            targetTier = vsModeTarget,
-            step = vsStep,
-            total = 3,
-            picked = vsPicked,
-            onPick = { pickInMatch(it) },
-            onCancel = { cancelVsMode() },
-        )
-    }
 }
 
 /*
- * TierHeader — tier letter chip + count badge + Elo range hint. A
- * colored left-stripe (Box of 4.dp width) reinforces which tier you're
- * looking at without taking extra vertical space.
+ * TierHeader — tier letter chip + count badge. v1.2 simplification: the
+ * Elo range hint still appears in plain text (e.g. "1850–2050") so the
+ * user retains a quick sense of where the tier sits, but the dialog no
+ * longer drills down into vs-mode rounds.
  */
 @Composable
 private fun TierHeader(tier: String?, count: Int, eloRange: IntRange?) {
@@ -381,181 +299,10 @@ private fun TierHeader(tier: String?, count: Int, eloRange: IntRange?) {
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
         Text(
-            text = eloRangeHint(tier, count, eloRange),
+            text = eloRange?.let { "${it.first}–${it.last} Elo" } ?: "long-press any card to rank",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
         )
-    }
-}
-
-/* ------------------------------------------------------------------ *\
- *  VsModeDialog — three head-to-head cards driven by EloEngine.update *
-\* ------------------------------------------------------------------ */
-@Composable
-private fun VsModeDialog(
-    root: AnimeEntry,
-    rootElo: Int,
-    opponent: AnimeEntry,
-    opponentElo: Int,
-    targetTier: String,
-    step: Int,
-    total: Int,
-    picked: Int?,
-    onPick: (Boolean) -> Unit,
-    onCancel: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = {
-            Text(
-                text = "Match ${step + 1} of $total · rank into tier $targetTier",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Tap the anime you rank higher.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    VsModeCard(
-                        entry = root,
-                        elo = rootElo,
-                        label = "ROOT",
-                        isWinner = picked == 0,
-                        isLoser = picked == 1,
-                        enabled = picked == null,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onPick(true) },
-                    )
-                    VsModeCard(
-                        entry = opponent,
-                        elo = opponentElo,
-                        label = "OPPONENT",
-                        isWinner = picked == 1,
-                        isLoser = picked == 0,
-                        enabled = picked == null,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onPick(false) },
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = "Winner gets +Elo · loser gets −Elo (K=32)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onCancel) { Text("Cancel") }
-        },
-    )
-}
-
-/*
- * VsModeCard — single head-to-head side. Outline flips to Accent when
- * the side has won the current match; dims when it lost; tappable only
- * while neither has been picked yet.
- */
-@Composable
-private fun VsModeCard(
-    entry: AnimeEntry,
-    elo: Int,
-    label: String,
-    isWinner: Boolean,
-    isLoser: Boolean,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val borderColor = when {
-        isWinner -> Accent
-        isLoser  -> Border
-        else     -> Border
-    }
-    val borderWidth = if (isWinner) 2.dp else 1.dp
-    Card(
-        modifier = modifier
-            .clickable(enabled = enabled, onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isLoser) MaterialTheme.colorScheme.surfaceVariant
-            else MaterialTheme.colorScheme.surface,
-        ),
-        border = BorderStroke(borderWidth, borderColor),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = entry.cover,
-                    contentDescription = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Accent,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = entry.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "Skill ~$elo",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = tierColor(entry.tier),
-                    fontWeight = FontWeight.ExtraBold,
-                )
-            }
-        }
-    }
-}
-
-/* ------------------------------------------------------------------ *\
- *  Helpers — Elo bounds, hint text, layout-side sp helper             *
-\* ------------------------------------------------------------------ */
-private fun eloRangeOf(entries: List<AnimeEntry>): IntRange? {
-    if (entries.isEmpty()) return null
-    val lo = entries.minOf { it.elo }
-    val hi = entries.maxOf { it.elo }
-    return lo..hi
-}
-
-private fun eloRangeHint(tier: String?, count: Int, eloRange: IntRange?): String {
-    // eloRange is kept on the signature so we don't need to touch every
-    // call site, but we no longer surface the raw number — naked Elo on
-    // a tier header is uninformative. The header now shows the count and
-    // a long-press hint.
-    return when {
-        count == 0 -> if (tier == null) "long-press any card to rank"
-                      else "long-press a card to add to this tier"
-        else       -> "$count in tier - long-press to re-rank"
     }
 }
 
@@ -573,20 +320,3 @@ private fun rankWithinTierText(
     val idx = sorted.indexOfFirst { it.anilistId == target.anilistId }
     return if (idx < 0) null else "#${idx + 1} of ${sorted.size}"
 }
-
-private fun tierHint(
-    tier: String,
-    entries: List<AnimeEntry>,
-): String {
-    val inTier = entries
-    return when {
-        inTier.size < 3 -> "(vs-mode skipped · ${inTier.size} in tier)"
-        inTier.isEmpty() -> "(empty · instant rank)"
-        else -> {
-            val med = EloEngine.medianElo(tier, inTier) ?: EloEngine.INITIAL_ELO
-            "median $med"
-        }
-    }
-}
-
-

@@ -137,9 +137,10 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     var synopsisExpanded by rememberSaveable { mutableStateOf(false) }
     var syncFeedback    by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
-    LaunchedEffect(anilistId) {
+    LaunchedEffect(anilistId, entry?.mediaType) {
         detailsLoaded = false
-        fetchedDetails = app.anilistClient.getMediaDetails(anilistId)
+        val mediaType = entry?.mediaType ?: "ANIME"
+        fetchedDetails = app.anilistClient.getMediaDetails(anilistId, mediaType)
         detailsLoaded = true
     }
 
@@ -483,9 +484,25 @@ private fun MetadataFlowRow(details: MediaDetails?) {
         if (details.format != null) add("Format" to prettyFormat(details.format))
         val seasonStr = prettySeason(details.season, details.year)
         if (seasonStr != null) add("Season" to seasonStr)
+        // v1.2 manga/novel: switch the unit label based on the media's
+        // type. `episodes` field is only meaningful for anime; we read
+        // `chapters` for manga and `volumes` for novels, falling back to
+        // `episodes` when the AniList record hasn't filled them in.
+        val isManga = details.mediaType == "MANGA"
+        val isNovel = details.format == "NOVEL"
+        val unitsLabel = when {
+            isNovel -> "Volumes"
+            isManga -> "Chapters"
+            else    -> "Episodes"
+        }
+        val unitsValue: Int? = when {
+            isManga -> details.chapters ?: details.episodes
+            isNovel -> details.volumes ?: details.episodes
+            else    -> details.episodes
+        }
         when {
-            details.episodes != null -> add("Episodes" to details.episodes.toString())
-            details.status == "RELEASING" -> add("Episodes" to "Ongoing")
+            unitsValue != null -> add(unitsLabel to unitsValue.toString())
+            details.status == "RELEASING" -> add(unitsLabel to "Ongoing")
         }
         if (details.duration != null) add("Duration" to "${details.duration}m")
         if (details.averageScore != null) {
@@ -1296,6 +1313,7 @@ internal fun buildFallbackDetails(e: AnimeEntry): MediaDetails {
         synopsis = e.synopsis ?: "Synopsis unavailable offline.",
         characters = emptyList(),
         relations = emptyList(),
+        mediaType = e.mediaType,
     )
 }
 
@@ -1317,6 +1335,7 @@ internal fun buildEntryFromDetails(d: MediaDetails): AnimeEntry {
         year         = d.year,
         synopsis     = d.synopsis,
         genres       = d.genres.joinToString(", "),
+        mediaType    = d.mediaType,
         tier         = null,
         elo          = 1500,
         currentEp    = 0,

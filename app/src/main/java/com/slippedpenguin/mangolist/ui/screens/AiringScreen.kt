@@ -460,6 +460,25 @@ private fun AiringCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                     )
+                    slot.averageScore?.takeIf { it > 0 }?.let { score ->
+                        // v1.2 Airing enrichment: render the AniList
+                        // average-score badge next to the episode count
+                        // when non-null. Mirrors the AnimePosterCard style
+                        // so the air tab and the explore surface agree.
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Accent.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 1.dp),
+                        ) {
+                            Text(
+                                text = "$score",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Accent,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
                     localEntry?.let { entry ->
                         val myEp = entry.currentEp
                         val total = entry.episodes

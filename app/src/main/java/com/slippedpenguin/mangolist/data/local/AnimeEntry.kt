@@ -10,11 +10,20 @@ import androidx.room.PrimaryKey
  *   - `tier` + `elo` are local-only tierlist data. Never pushed to AniList
  *     (AniList has no tierlist field, and the user wants this kept private).
  *   - `currentEp` is the local progress counter; sync pushes it to AniList's
- *     `progress` field when `syncedAt` is present.
+ *     `progress` field when `syncedAt` is present. For manga the same field
+ *     stores chapter progress (AniList's `progress` for MANGA covers either
+ *     chapters or volumes by your scoring-system preference; we treat it
+ *     as chapters since that's the dominant convention).
  *   - `listEntryId` is the AniList MediaList id — null means "never synced."
  *   - `updatedAt` is the high-water mark for last-write-wins sync conflicts.
  *   - `genres` is a comma-separated string to avoid a join table for v1
  *     (a normalised Genres column is a v1.x concern).
+ *
+ * v1.2: added `mediaType` discriminator (ROOM v4) so a single table holds
+ * both anime and manga. Defaults to "ANIME" so v3 rows migrate untouched.
+ * AniList assigns globally-unique ids across ANIME+MANGA, so `(anilistId)`
+ * remains a safe PK — `(anilistId, mediaType)` would be overkill here and
+ * would complicate every existing Room query.
  */
 @Entity(tableName = "anime_entries")
 data class AnimeEntry(
@@ -25,36 +34,42 @@ data class AnimeEntry(
     val title: String,
     val cover: String?,
     val coverColor: String?,
-    val format: String?,           // "TV", "MOVIE", "OVA", "MANGA" → ANIME here
-    val episodes: Int?,            // null if AniList reports "currently airing"
-    val averageScore: Int?,        // 0-100; we divide by 10 for display
+    val format: String?,
+    val episodes: Int?,
+    val averageScore: Int?,
     val year: Int?,
     val synopsis: String?,
-    val genres: String,            // comma-separated, v1 simplicity
+    val genres: String,
+    val mediaType: String = "ANIME",  // "ANIME" or "MANGA"; set from graphql `type` on every pull
 
     // Tierlist / Elo (local-only)
-    val tier: String?,             // "S" | "A" | "B" | "C" | "D" | null = unranked
-    val elo: Int,                  // default 1500
+    val tier: String?,
+    val elo: Int,
 
     // Tracking
-    val currentEp: Int,            // 0..episodes
-    val status: String,            // "plan" | "watching" | "completed" | "dropped"
+    val currentEp: Int,
+    val status: String,
     val notes: String,
-    val personalScore: Int? = null,  // null = unset; 0-100 (maps to 0-10 with one decimal)
-    val favourite: Boolean = false,  // round-trips with AniList's `MediaList.favourite` field; updated by saveEntry / syncUserList.
+    val personalScore: Int? = null,
+    val favourite: Boolean = false,
 
     // Sync metadata
-    val listEntryId: Int?,         // AniList MediaList id (null = never synced)
-    val updatedAt: Long,           // last local edit (epoch millis)
-    val syncedAt: Long?,           // last successful push (epoch millis)
+    val listEntryId: Int?,
+    val updatedAt: Long,
+    val syncedAt: Long?,
 ) {
     /**
      * Returns a copy of this entry with local-only tierlist data preserved
      * from [existing]. Used when overwriting an entry with synced data so
      * the user's tier/elo rankings are not lost.
+     *
+     * v1.2: also preserves `mediaType` — a manga entry upserted with ANIME
+     * defaults is corrected to the incoming mediaType on the same row, but
+     * `tier`/`elo` always come from the existing local row.
      */
     fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry = copy(
         tier = existing?.tier ?: tier,
         elo = existing?.elo ?: elo,
+        mediaType = existing?.mediaType ?: mediaType,
     )
 }

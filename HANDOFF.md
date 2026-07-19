@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.1.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.1.0)  
+> **Latest documented release:** [v1.2.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.2.0)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -116,12 +116,9 @@ mangolist/
 ### Tierlist UI
 - `TiersScreen` is a vertical rail of five rows (S / A / B / C / D) plus an Unranked bucket. Each row sorted by Elo descending.
 - `TierHeader` shows tier letter (tier-tinted), count badge, and live Elo range (`1850–2050` etc.) so the user has a quick sense of where their collection sits.
-- **Long-press any `AnimeCard`** → `ModalBottomSheet` with the five tier options (plus Cancel) and a per-row hint (median Elo if the target tier has ≥3 entries, else "vs-mode skipped · N in tier" or "(empty · instant rank)").
-- Picking a target tier:
-  - If the target tier has **≥ 3 opponents**, open `VsModeDialog`: three rounds of head-to-head tapping, each driven by `EloEngine.update`.
-  - Each pick highlights the winner for ~900ms then advances.
-  - Otherwise (target tier empty or < 3 entries) commit immediately with `elo = INITIAL_ELO`.
-- After 3 matches, the root entry gets `tier = target, elo = finalElo`; opponent entries with mutated elos are written back in the same flow (sequential `dao.update` calls — not wrapped in a Room `@Transaction`).### Airing Schedule
+- **Long-press any `AnimeCard`** → `ModalBottomSheet` with the five tier options (plus Cancel / Unranked) and a per-row hint (`(empty · first in tier)` or `N in tier`).
+- **v1.2 simplification:** picking any tier commits immediately with `elo = INITIAL_ELO`. The previous 3-round vs-mode ceremony (`VsModeDialog`) was removed because tier-list felt "kinda wack" — users just want to drop a card in a bucket, not horse-trade through three Elo matches. The `EloEngine.update` API still exists for tests and any future in-place rebalancing.
+### Airing Schedule
 
 - `AniListClient.getAiringSchedule()` fetches next 7 days of airing anime (max 50 slots)
 - `AiringScreen` groups by day (Today / Tomorrow / `EEE, MMM d`), shows a per-card countdown ("in 3d 12h" / "in 12h 30m" / "Airing now"), and ticks every 60s so the countdown stays fresh
@@ -155,34 +152,12 @@ mangolist/
 
 ### High (user-blocking gaps)
 
-1. **Genre / Tag filters on Explore** — the chip strip AniHyou has under
-   Discover (`Action`, `Romance`, `Isekai`, …). AniList's
-   `Page.media(genre_in: ...)` accepts a genre list — one chip strip +
-   reusable `AnimePosterCard` + one `getByGenre(genre)` Apollo query covers
-   the whole space. Tapping a chip replaces (or supplements) the carousels
-   with a grid of that genre's top results.
-2. **Manga support** — every AniList query today is hardcoded
-   `type: ANIME`. `AnimeEntry` already carries manga-compatible fields
-   (`format` already accepts `MANGA` values), so the data layer absorbs
-   most of the change. End state: a media-type toggle on Explore +
-   routing, with all Apollo queries exposing a `type` parameter.
-   `getAiringSchedule` is anime-only (queries `Page.airingSchedules`,
-   which doesn't exist for MANGA); manga needs a sibling
-   `getMangaReleases` (or similar) hitting
-   `Page.media(type: MANGA, status: RELEASING, sort: [START_DATE_DESC])`.
-   Airing-time math is replaced by start-date proximity.
+None remaining as of v1.2.0 — Manga support, Genre/Tag filters, Airing enrichment, and the polish backlog all shipped in v1.1–v1.2. Remaining gaps are pure polish.
 
 ### Polish (visible-but-small)
 
-1. **Airing `'On my list'` enrichment** — the filter relies on the v0.6
-   `GetAiringSchedule` response, which returns `media { id }` only. To
-   surface AniList's average score / status / banner on each card
-   (instead of the placeholder cover color when `AsyncImage` fails), the
-   `'All airing'` path needs a separate `Page.media` call keyed off the
-   same `airingSchedules.media.id`s.
-2. **Per-screen polish backlog** — visual leftovers from the v1.0 round
-   (any buttons that still render `null`, emoji icons that should be
-   text/native, the tier-list re-think, score-scale default-out-of-100).
+1. **Airing banner-image accent** — `AiringSlot.bannerImage` is now fetched and populated, but `AiringCard` currently renders the cover fallback only. A future polish pass can paint a 4dp-tall banner-accent bar above each card (using `slot.bannerImage` as a tinted brush) so the schedule row visually echoes the detail screen's hero gradient.
+2. **In-app logout** — `ProfileScreen` still surfaces a Sign-out CTA but the `TokenStore.clear()` call needs an audit for stale `userId` flows. Tracked under "per-screen polish" since it doesn't surface a crash, only stale state.
 
 ---
 
@@ -256,6 +231,32 @@ Quick reference for what's new since the last documented release.
 | Mode precedence | One mode at a time: search OR carousels | Three modes in clear precedence order: search bar (≥ 2 chars) > selected genre chip > no selection (carousels). The chip strip stays visible in all three modes for fast pivoting. |
 | Pull-to-refresh while genre-active | Only refreshed the four carousels; the spinner dismissed before fetches finished in some scenarios | Also re-fetches the currently selected genre alongside the carousels; the spinner is held inside a `try { ... } finally { isRefreshing = false }` on the launched job so the indicator stays until both calls resolve. |
 | `AniListClient` Apollo surface | `SearchAnime`, four carousel queries, `GetMediaDetails`, `GetViewer`, `GetMediaListCollection`, `SaveMediaListEntry`, `ToggleFavourite`, `GetAiringSchedule` | Adds `GetAnimeByGenreQuery($genre, $perPage)` bound to `...AnimeCardFields`. `getByGenre(genre, perPage = 25)` reuses the same `buildDiscoverEntry` mapper as the carousel queries; canonicalises the genre to Title Case; short-circuits on blank strings; wrapped in `withNetwork(emptyList()) { withContext(Dispatchers.IO) { ... } }` matching the v1.0.4 patterns. |
+
+## v1.2 deltas (since v1.1)
+
+| Area | v1.1 | v1.2 |
+|---|---|---|
+| Manga support | Every list-style Apollo query hardcoded `type: ANIME`; no UI surface for manga. | Every list-style query (search, four carousels, genre grid, media details) now takes `$type: MediaType = ANIME`. New `GetMangaReleases` query for the manga carousel. Room schema bumped v3→v4 with `MIGRATION_3_4` adding `mediaType TEXT NOT NULL DEFAULT 'ANIME'`. `AnimeEntry.mediaType: String = "ANIME"` discriminator. `parseMediaListEntry` switches to `chapters`/`volumes` for manga; `currentEp` retains the dominant "chapters" convention for progress. `MainActivity.handleAuthRedirect` and `TiersScreen` pull both ANIME and MANGA on sync and merge into one Room table (anilistId is globally unique across types so no PK clash). |
+| Explore media-type toggle | Always anime. | `SingleChoiceSegmentedButtonRow` above the search bar: Anime / Manga. Toggling re-fetches all four carousels with the chosen `type`. Manga mode also surfaces a "Releasing manga" carousel (`getMangaReleases`, hits `Page.media(type: MANGA, status: RELEASING, sort: [START_DATE_DESC])`). Search placeholder adapts ("Search AniList manga…"). Search-result rows show "X ch" instead of "X ep" for manga. |
+| Watchlist media-type filter | Anime + manga rows mixed under one status tab. | `All / Anime / Manga` chip strip above the status tabs. Filter is AND-ed with the existing status filter so the same tab counts narrow further by media type. |
+| Detail-screen manga-aware metadata | Always "Episodes X". | `MetadataFlowRow` reads `details.mediaType` + `details.format`. Anime → "Episodes"; MANGA → "Chapters"; NOVEL → "Volumes". `chapters`/`volumes` fall back to `episodes` when AniList hasn't filled them in. |
+| Tierlist (vs-mode removed) | Long-press → 3-round `VsModeDialog` head-to-head driven by `EloEngine.update`. | Long-press → `ModalBottomSheet` with five `TextButton`s (S/A/B/C/D + Unranked + Cancel). Picking any tier commits immediately with `elo = INITIAL_ELO`. The user flagged tier-list as "kinda wack" — the 3-round ceremony was the wack part. `EloEngine.update` is still wired (used by tests; any future in-place rebalancing can reuse it). |
+| Airing enrichment | Per-card only `cover + title + Ep X + countdown`. | `getNextAiringFor` + `getAiringSchedule` hand-rolled JSON queries now fetch `averageScore status bannerImage` on the media node. `AiringSlot` data class gains `averageScore / anilistStatus / bannerImage`. `AiringCard` renders a tinted avg-score badge next to `Ep N` when `slot.averageScore != null && > 0`. Banner-image accent is fetched but not yet painted (deferred polish — see *What's missing*). |
+| Score scale default | `OUT_OF_10` | `OUT_OF_100`. The DataStore-persisted scale tag still wins for returning users; only fresh installs and never-toggled users inherit the new default. |
+| Schema migration | Room v3 (favourites). | Room v4. `MIGRATION_3_4` runs `ALTER TABLE anime_entries ADD COLUMN mediaType TEXT NOT NULL DEFAULT 'ANIME'`. Existing rows get the ANIME literal so the post-migration DB is indistinguishable from one written by v1.2 code on day one. Tier / Elo / favourites / notes / score on every existing row are preserved. `fallbackToDestructiveMigration()` left wired as a safety net for unknown future versions only. |
+
+**Code anchors for v1.2:**
+- `data/AniListClient.kt` — `toAniListType` helper, `type` parameter on every carousel/search/details method, new `getMangaReleases`, extended `AiringSlot`.
+- `data/local/AnimeDatabase.kt` — `MIGRATION_3_4`.
+- `data/local/AnimeEntry.kt` — `mediaType` field + `preserveLocalFields` preservation.
+- `data/ScoreScale.kt` — `Default = OUT_OF_100`.
+- `ui/screens/ExploreScreen.kt` — `MediaTypeSegmentedControl` + manga-only "Releasing manga" carousel.
+- `ui/screens/DetailScreen.kt` — `MetadataFlowRow` media-type-aware unit label.
+- `ui/screens/WatchlistScreen.kt` — media-type chip strip above status tabs.
+- `ui/screens/TiersScreen.kt` — vs-mode removed; `ModalBottomSheet` with 5 tier buttons commits at INITIAL_ELO.
+- `ui/screens/AiringScreen.kt` — `AiringCard` avg-score badge.
+- `MainActivity.kt` — auth-redirect handler pulls both ANIME and MANGA lists.
+- `graphql/com/slippedpenguin/mangolist/queries.graphql` — `$type: MediaType = ANIME` on every list-style query; new `GetMangaReleases`.
 
 ---
 

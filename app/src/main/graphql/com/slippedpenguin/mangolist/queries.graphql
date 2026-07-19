@@ -7,17 +7,24 @@
 # Stubbed purpose: each operation is referenced from a Compose screen /
 # Apollo client wrapper in v1.0+. v1 scaffold compiles because Apollo's
 # codegen runs unconditionally on every .graphql file.
+#
+# v1.2.0: every list-style query now takes `$type: MediaType = ANIME`
+# so the same query operations can serve anime *and* manga. Defaults keep
+# every existing call site back-compatible. Synchronous fetches in
+# AniListClient pass through the requested type verbatim ("ANIME" or
+# "MANGA"); "BOTH" is a UI-only state that fans out into two sync calls
+# rather than a third enum value on this enum.
 
-query SearchAnime($search: String!, $perPage: Int = 12) {
+query SearchAnime($search: String!, $perPage: Int = 12, $type: MediaType = ANIME) {
   Page(perPage: $perPage) {
-    media(search: $search, type: ANIME, sort: [SEARCH_MATCH]) {
+    media(search: $search, type: $type, sort: [SEARCH_MATCH]) {
       ...AnimeCardFields
     }
   }
 }
 
-query GetMediaDetails($id: Int!) {
-  Media(id: $id, type: ANIME) {
+query GetMediaDetails($id: Int!, $type: MediaType = ANIME) {
+  Media(id: $id, type: $type) {
     ...AnimeCardFields
     description(asHtml: false)
     status
@@ -82,6 +89,7 @@ query GetViewer {
 }
 
 # For sync: pull the user's full lists so the local DB can be reconciled.
+# `$type` already existed pre-v1.2 — kept intact for call-site clarity.
 query GetMediaListCollection($userId: Int!, $type: MediaType = ANIME) {
   MediaListCollection(userId: $userId, type: $type) {
     lists {
@@ -141,6 +149,10 @@ mutation ToggleFavourite($animeId: Int) {
 }
 
 # Airing schedule between two epoch timestamps (for the Airing tab).
+# Hand-rolled JSON POST in AniListClient — kept off Apollo to avoid
+# fragment-spread codegen issues. `media { id }` is enough for "All
+# airing" mode; `On my list` mode reads additional averageScore /
+# status / banner from a per-anime Apollo call below.
 query GetAiringSchedule($airingAtGreater: Int!, $airingAtLesser: Int!) {
   Page(perPage: 50) {
     airingSchedules(
@@ -164,34 +176,38 @@ query GetAiringSchedule($airingAtGreater: Int!, $airingAtLesser: Int!) {
 # render cover + title + format + year + averageScore for the poster cards.
 # Per-page sizes are tuned for ~5 cards visible across the screen at once on
 # a typical phone, with the next 20 rendering as you scroll the LazyRow.
+#
+# v1.2: take `$type: MediaType = ANIME` so the same query serves the
+# manga carousel mode. The Media.type filter is mandatory on these
+# queries; the default keeps every existing call site compatible.
 
-query GetPopularAnime {
+query GetPopularAnime($type: MediaType = ANIME) {
   Page(perPage: 25) {
-    media(type: ANIME, sort: [POPULARITY_DESC]) {
+    media(type: $type, sort: [POPULARITY_DESC]) {
       ...AnimeCardFields
     }
   }
 }
 
-query GetTrendingAnime {
+query GetTrendingAnime($type: MediaType = ANIME) {
   Page(perPage: 25) {
-    media(type: ANIME, sort: [TRENDING_DESC]) {
+    media(type: $type, sort: [TRENDING_DESC]) {
       ...AnimeCardFields
     }
   }
 }
 
-query GetUpcomingAnime {
-  Page(perPage: 25) {
-    media(type: ANIME, status: NOT_YET_RELEASED, sort: [START_DATE_DESC]) {
+query GetUpcomingAnime($type: MediaType = ANIME) {
+  Page(perPage: 50) {
+    media(type: $type, status: NOT_YET_RELEASED, sort: [START_DATE_DESC]) {
       ...AnimeCardFields
     }
   }
 }
 
-query GetTopRatedAnime {
+query GetTopRatedAnime($type: MediaType = ANIME) {
   Page(perPage: 25) {
-    media(type: ANIME, sort: [SCORE_DESC]) {
+    media(type: $type, sort: [SCORE_DESC]) {
       ...AnimeCardFields
     }
   }
@@ -204,10 +220,40 @@ query GetTopRatedAnime {
 # chip text is, so chip labels must match AniList's canonical genre strings
 # (Action, Romance, Isekai, …). See GenreChip.GENRES in ExploreScreen.kt
 # for the curated chip set used in v1.1.
-query GetAnimeByGenre($genre: String!, $perPage: Int = 25) {
+#
+# v1.2: add `$type` so the genre grid can serve manga too.
+query GetAnimeByGenre($genre: String!, $perPage: Int = 25, $type: MediaType = ANIME) {
   Page(perPage: $perPage) {
-    media(genre_in: [$genre], type: ANIME, sort: [POPULARITY_DESC]) {
+    media(genre_in: [$genre], type: $type, sort: [POPULARITY_DESC]) {
       ...AnimeCardFields
+    }
+  }
+}
+
+# v1.2: "Releasing manga" surface — mirrors Airing for anime. Manga has
+# no `airingSchedules`, so the query uses `status: RELEASING` with
+# `START_DATE_DESC` sort (recently-addded manga first). Same Manga-card
+# shape as the four carousels via the AnimeCardFields fragment.
+query GetMangaReleases {
+  Page(perPage: 50) {
+    media(type: MANGA, status: RELEASING, sort: [START_DATE_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
+# v1.2: per-anime airing lookup used by the `On my list` Airing tab.
+# Already-v1.0 query — kept intact because Apollo Kotlin 4.x's
+# fragment-spread codegen works for it. The hand-rolled JSON sibling
+# in AniListClient (`getNextAiringFor`) carries the same AiringSlot
+# data and is the source AiringCard reads from today.
+query GetNextAiringEpisodes($ids: [Int!]) {
+  Page(perPage: 50) {
+    media(id_in: $ids, type: ANIME) {
+      id
+      title { romaji english }
+      coverImage { large }
+      nextAiringEpisode { id airingAt episode }
     }
   }
 }
@@ -217,10 +263,16 @@ fragment AnimeCardFields on Media {
   title { romaji english }
   coverImage { large medium color }
   episodes
+  chapters
+  volumes
   format
   averageScore
   startDate { year }
   genres
+  status
+  bannerImage
+  # `type` is the discriminator between anime and manga. Always present on
+  # AniList responses; we surface it in the data layer via mediaType mapping.
 }
 
 fragment ListEntryFields on MediaList {

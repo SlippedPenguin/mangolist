@@ -13,21 +13,25 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *
  * Schema export is OFF for v1 (no migrations yet). Turn it on before
  * shipping v1.0 so future schema changes get caught at PR time:
- *   @Database(entities = [...], version = 3, exportSchema = true)
+ *   @Database(entities = [...], version = 4, exportSchema = true)
  * plus `room.schemaLocation` in app/build.gradle.kts to dump to resources.
  *
  * v3 (favourites): adds the `favourite` column via an explicit Migration.
  * Destructive fallback is intentionally NOT used here because tier/elo are
  * local-only fields that AniList cannot recover for us; losing them on a
- * schema bump would silently wipe the user's tier rankings. MIGRATION_2_3
- * preserves every existing row's tier/elo/notes while adding the new
- * column with a default value of 0 (false). fallbackToDestructiveMigration
- * is left wired up as a last-resort safety net for *unknown* migrations,
- * not for known-good ones.
+ * schema bump would silently wipe the user's tier rankings.
+ *
+ * v4 (manga): adds the `mediaType` column (NOT NULL DEFAULT 'ANIME') so
+ * the single `anime_entries` table holds both anime and manga. Same
+ * destructive-Migration caveat — tier/elo on every v3 row must be
+ * preserved. Both MIGRATION_2_3 and MIGRATION_3_4 are explicit ALTER
+ * statements; the `fallbackToDestructiveMigration()` is left wired up as
+ * a last-resort safety net for *unknown* future migrations, not for
+ * known-good ones.
  */
 @Database(
     entities = [AnimeEntry::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class AnimeDatabase : RoomDatabase() {
@@ -54,6 +58,24 @@ abstract class AnimeDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 → v4 — mediaType column (manga support).
+         *
+         * Adds `mediaType TEXT NOT NULL DEFAULT 'ANIME'`. Every existing
+         * row gets the literal "ANIME" so the post-migration database is
+         * indistinguishable from one written by v1.2 code on day one.
+         * Tier/elo/notes/score for every existing row are untouched — the
+         * `preserveLocalFields` merge in MainActivity still wins for any
+         * row whose incoming payload disagrees with the local copy.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE anime_entries ADD COLUMN mediaType TEXT NOT NULL DEFAULT 'ANIME'"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AnimeDatabase? = null
 
@@ -64,7 +86,7 @@ abstract class AnimeDatabase : RoomDatabase() {
                     AnimeDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
             }

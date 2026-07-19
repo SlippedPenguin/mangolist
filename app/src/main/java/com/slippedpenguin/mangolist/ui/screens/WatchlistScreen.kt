@@ -1,10 +1,13 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ScrollableTabRow
@@ -74,13 +79,20 @@ fun WatchlistScreen(navController: NavController) {
     // filters, so the filter logic branches on `key == FAVORITES_KEY`
     // rather than matching an actual AnimeEntry.status value.
     var selectedStatus by remember { mutableStateOf<String?>(null) }
+    // v1.2: media-type tristate above the status tabs. null = both,
+    // "ANIME" filters to anime-only rows, "MANGA" filters to manga-only.
+    var selectedMediaType by remember { mutableStateOf<String?>(null) }
 
     val counts = remember(entries) { statusCounts(entries) }
-    val filtered = remember(entries, selectedStatus) {
-        when (selectedStatus) {
+    val filtered = remember(entries, selectedStatus, selectedMediaType) {
+        val byStatus = when (selectedStatus) {
             null                  -> entries
             FAVORITES_KEY         -> entries.filter { it.favourite }
             else                  -> entries.filter { it.status == selectedStatus }
+        }
+        when (selectedMediaType) {
+            null  -> byStatus
+            else  -> byStatus.filter { it.mediaType == selectedMediaType }
         }
     }
     val selectedIndex = remember(selectedStatus) {
@@ -117,6 +129,40 @@ fun WatchlistScreen(navController: NavController) {
             )
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
+                // v1.2: media-type chip strip sits above the status
+                // tabs. "All" reveals both anime and manga rows; the
+                // two specific chips filter to a single media type.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = selectedMediaType == null,
+                        onClick = { selectedMediaType = null },
+                        label = { Text("All") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        ),
+                    )
+                    FilterChip(
+                        selected = selectedMediaType == "ANIME",
+                        onClick = { selectedMediaType = if (selectedMediaType == "ANIME") null else "ANIME" },
+                        label = { Text("Anime") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        ),
+                    )
+                    FilterChip(
+                        selected = selectedMediaType == "MANGA",
+                        onClick = { selectedMediaType = if (selectedMediaType == "MANGA") null else "MANGA" },
+                        label = { Text("Manga") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        ),
+                    )
+                }
                 ScrollableTabRow(
                     selectedTabIndex = selectedIndex,
                     edgePadding = 16.dp,
