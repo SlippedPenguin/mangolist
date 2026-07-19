@@ -390,9 +390,9 @@ class AniListClient(
 
             val responseCode = conn.responseCode
             val responseBody = if (responseCode in 200..299) {
-                conn.inputStream.bufferedReader().readText()
+                conn.inputStream.bufferedReader().use { it.readText() }
             } else {
-                conn.errorStream?.bufferedReader()?.readText() ?: ""
+                conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
             }
 
             if (responseCode !in 200..299) {
@@ -441,8 +441,8 @@ class AniListClient(
                 .orEmpty()
             SyncResult(entries, null)
         } catch (e: Exception) {
-            android.util.Log.w("AniListClient", "syncUserList failed", e)
-            SyncResult(null, e.message ?: "Unknown sync error")
+            android.util.Log.e("AniListClient", "syncUserList failed: ${e.javaClass.simpleName}", e)
+            SyncResult(null, e.message ?: "Unknown sync error (${e.javaClass.simpleName})")
         }
         }
     }
@@ -615,7 +615,7 @@ class AniListClient(
                     android.util.Log.w("AniListClient", "token exchange HTTP ${conn.responseCode}: $errorBody")
                     return null
                 }
-                val responseBody = conn.inputStream.bufferedReader().readText()
+                val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
                 root["access_token"]?.jsonPrimitive?.content
             } catch (e: Exception) {
@@ -682,7 +682,7 @@ class AniListClient(
                     android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode} (anilistId=${entry.anilistId}, status=${entry.status}, currentEp=${entry.currentEp}, personalScore=${entry.personalScore}, notes.len=${entry.notes.length}): ${errorBody.take(400)}")
                     return null
                 }
-                val responseBody = conn.inputStream.bufferedReader().readText()
+                val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
                 // Surface GraphQL-level errors (validation, schema mismatch) — they typically
                 // come back as HTTP 200 with a `errors` array and no `data`.
@@ -775,7 +775,7 @@ class AniListClient(
                     )
                     return@withNetwork null
                 }
-                val responseBody = conn.inputStream.bufferedReader().readText()
+                val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                 val root = json.parseToJsonElement(responseBody).jsonObject
 
                 // GraphQL-level errors (validation, schema mismatch) - same
@@ -856,7 +856,7 @@ class AniListClient(
                         )
                         return@flatMap emptyList<AiringSlot>()
                     }
-                    val responseBody = conn.inputStream.bufferedReader().readText()
+                    val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                     val root = json.parseToJsonElement(responseBody).jsonObject
                     val mediaArray = root["data"]?.jsonObject
                         ?.get("Page")?.jsonObject
@@ -915,7 +915,7 @@ class AniListClient(
             conn.outputStream.use { it.write(body.toByteArray()) }
 
             if (conn.responseCode !in 200..299) return emptyList()
-            val responseBody = conn.inputStream.bufferedReader().readText()
+            val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
             val root = json.parseToJsonElement(responseBody).jsonObject
             val schedules = root["data"]?.jsonObject
                 ?.get("Page")?.jsonObject
