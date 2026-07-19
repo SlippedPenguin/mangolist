@@ -1,5 +1,7 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,13 +44,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
@@ -59,29 +66,30 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /*
- * Explore — v1.0: discovery surface replacing the v0.x "Add" search-only
- * tab. Three AniList carousels stack under the search bar:
+ * Explore — v1.1: discovery surface replacing the v0.x "Add" search-only
+ * tab. Three layered modes under the search bar:
  *
- *   1. Popular (POPULARITY_DESC)
- *   2. Trending (TRENDING_DESC)
- *   3. Coming Soon (NOT_YET_RELEASED + START_DATE_DESC)
- *   4. Top Rated (SCORE_DESC)
+ *   1. **Search bar query** wins outright: any time the user has typed
+ *      ≥ 2 chars, the screen swaps to a vertical list of AniList search
+ *      hits. The genre chip strip stays visible (so the user can pivot
+ *      back) but its selection is ignored while searching.
+ *
+ *   2. **Genre chip selected** (search bar empty): the four carousels are
+ *      hidden and a 2-column grid of `AnimePosterCard` renders for the
+ *      chosen genre, fetched via AniList's `Page.media(genre_in: [...],
+ *      sort: POPULARITY_DESC)`. Tap a tile routes to DetailScreen.
+ *
+ *   3. **No search, no genre chip** (the "All" chip is the implicit default):
+ *      the four carousels render exactly as v1.0 shipped them.
  *
  * Each carousel fetches independently — failures in one don't block the
- * others. Pull-to-refresh re-runs all four queries in parallel via
- * coroutineScope { async { ... } } / awaitAll, which is cheaper than
- * sequential await — the AniList introspection suggests ~200ms per query,
- * so a 4-up parallel fetch lands in ~300ms rather than ~800ms.
+ * others. Pull-to-refresh re-runs all four carousel queries (and the
+ * currently-selected genre query, if any) in parallel.
  *
- * When the user types into the search bar (≥ 2 chars), the carousels are
- * hidden entirely and the screen swaps to a vertical list of search hits.
- * This mirrors AniHyou's explore surface — one column for two distinct
- * modes rather than two parallel columns, which would compete for vertical
- * space on a phone.
- *
- * Tapping a search hit upserts the AnimeEntry into Room and routes to
- * DetailScreen — same as v0.x's "Add" flow. Tapping a carousel card
- * routes directly to DetailScreen without writing to Room.
+ * The chip strip mirrors AniHyou: one `LazyRow` of `FilterChip`s, sticky
+ * under the search bar. "All" clears `selectedGenre` so the carousels come
+ * back. Unknown / blank chip strings short-circuit in `AniListClient.getByGenre`
+ * rather than surface a sync error toast.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +107,10 @@ fun ExploreScreen(navController: NavController) {
     var searchResults by remember { mutableStateOf<List<AnimeEntry>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var inListIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    var genreResults by remember { mutableStateOf<List<AnimeEntry>?>(null) }
+    var genreLoading by remember { mutableStateOf(false) }
+    var requestSeq by remember { mutableStateOf(0) }
     val isOnline by app.networkObserver.isOnline.collectAsState(initial = true)
 
     suspend fun reloadCarousels() {
@@ -122,12 +134,24 @@ fun ExploreScreen(navController: NavController) {
 
     LaunchedEffect(isRefreshing) {
         if (isRefreshing) {
-            reloadCarousels()
-            isRefreshing = false
+            // Reload carousels AND re-fetch the current genre so a pull on
+            // a genre-filtered grid replaces stale data. The `finally` keeps
+            // the PullToRefreshBox spinner visible until both network calls
+            // resolve — without it, `scope.launch { ... }` returns
+            // synchronously and we'd flip `isRefreshing` off before the work
+            // finishes, making the spinner disappear prematurely.
+            scope.launch {
+                try {
+                    reloadCarousels()
+                    selectedGenre?.let { genreResults = app.anilistClient.getByGenre(it) }
+                } finally {
+                    isRefreshing = false
+                }
+            }
         }
     }
 
-    // Update the in-list set so "Add" → "Open" state on search hits is
+    // Update the in-list set so "+ Add" -> "Open" state on search hits is
     // accurate without the user having to back out of Explore.
     LaunchedEffect(Unit) {
         app.database.animeDao().observeAll().collect { all ->
@@ -150,12 +174,43 @@ fun ExploreScreen(navController: NavController) {
         searching = false
     }
 
+    // Genre chip -> fetch. Every chip change fires a fresh `getByGenre`
+    // call. We deliberately don't cache results across chip selections —
+    // the user expects a fresh list per chip, and the AniList request is
+    // ~200 ms so request echo between chips feels instant.
+    //
+    // We key on both `selectedGenre` AND `isSearching`: while the search
+    // bar owns the screen, chip taps are visible-but-inert (genre mode is
+    // hidden in favour of SearchResultsList), so we short-circuit and
+    // avoid launching a backend fetch whose result would be discarded.
+    LaunchedEffect(selectedGenre, isSearching) {
+        if (isSearching) return@LaunchedEffect
+        val g = selectedGenre ?: run {
+            genreResults = null
+            genreLoading = false
+            return@LaunchedEffect
+        }
+        // Token-guard against rapid chip taps: each fetch is stamped with the
+        // current requestSeq, and only the most recent fetch may commit its
+        // results. Without this, a slow earlier fetch (e.g. "Action") could
+        // complete after a fast later one (e.g. "Romance") and overwrite the
+        // newer results, leaving the grid out of sync with the chip state.
+        val mySeq = ++requestSeq
+        genreLoading = true
+        val res = app.anilistClient.getByGenre(g)
+        if (mySeq == requestSeq) {
+            genreResults = res
+            genreLoading = false
+        }
+    }
+
     val isSearching = query.trim().length >= 2
+    val isGenreSelected = selectedGenre != null && !isSearching
 
     Column(modifier = Modifier.fillMaxSize()) {
         OfflineBanner()
 
-        // Search bar — sticky at top so the carousels / results scroll under it.
+        // Search bar — sticky at top so the chips / carousels / grid scroll under it.
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
@@ -169,6 +224,17 @@ fun ExploreScreen(navController: NavController) {
             colors = TextFieldDefaults.colors(
                 unfocusedContainerColor = TierUnranked.copy(alpha = 0.25f),
             ),
+        )
+
+        // Genre chip strip. Sticky under the search bar. "All" deselects.
+        // While searching, the chips stay visible but their choice is
+        // ignored (search bar takes precedence) and they dim to 40% alpha
+        // so the inertness is visually obvious.
+        GenreChips(
+            selected = selectedGenre,
+            onSelect = { selectedGenre = it },
+            searchActive = isSearching,
+            modifier = Modifier.fillMaxWidth(),
         )
 
         PullToRefreshBox(
@@ -187,8 +253,8 @@ fun ExploreScreen(navController: NavController) {
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-            if (isSearching) {
-                SearchResultsList(
+            when {
+                isSearching -> SearchResultsList(
                     results = searchResults,
                     loading = searching,
                     inListIds = inListIds,
@@ -201,8 +267,16 @@ fun ExploreScreen(navController: NavController) {
                         }
                     },
                 )
-            } else {
-                CarouselColumn(
+                isGenreSelected -> GenreGrid(
+                    genre = selectedGenre!!,
+                    items = genreResults,
+                    loading = genreLoading,
+                    isOnline = isOnline,
+                    onCardClick = { entry ->
+                        navController.navigate("detail/${entry.anilistId}")
+                    },
+                )
+                else -> CarouselColumn(
                     popular = popular,
                     trending = trending,
                     upcoming = upcoming,
@@ -211,6 +285,140 @@ fun ExploreScreen(navController: NavController) {
                     onCardClick = { entry ->
                         navController.navigate("detail/${entry.anilistId}")
                     },
+                )
+            }
+        }
+    }
+}
+
+/*
+ * Curated genre list — mirrors AniHyou's Discover chip strip. Each
+ * label is an exact AniList genre string (case-insensitive on AniList's
+ * side, but `AniListClient.getByGenre` canonicalises to Title Case).
+ * Order matches AniHyou so muscle memory transfers.
+ */
+private val GENRES: List<String> = listOf(
+    "Action",
+    "Adventure",
+    "Comedy",
+    "Drama",
+    "Ecchi",
+    "Fantasy",
+    "Horror",
+    "Mahou Shoujo",
+    "Mecha",
+    "Music",
+    "Mystery",
+    "Psychological",
+    "Romance",
+    "Sci-Fi",
+    "Slice of Life",
+    "Sports",
+    "Supernatural",
+    "Thriller",
+)
+
+@Composable
+private fun GenreChips(
+    selected: String?,
+    onSelect: (String?) -> Unit,
+    searchActive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    // While the search bar owns the screen, dim the chip strip so taps
+    // visibly feel inert (the chip LaunchedEffect no-ops in `isSearching`).
+    // The alpha animates over ~150ms so the transition feels deliberate
+    // rather than snapping when the user types or clears the search bar.
+    val chipAlpha by animateFloatAsState(
+        targetValue = if (searchActive) 0.4f else 1.0f,
+        animationSpec = tween(durationMillis = 150),
+        label = "genreChipStripAlpha",
+    )
+    LazyRow(
+        modifier = modifier
+            .padding(vertical = 4.dp)
+            .graphicsLayer { this.alpha = chipAlpha },
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        item(key = "all") {
+            FilterChip(
+                selected = selected == null,
+                onClick = { onSelect(null) },
+                label = { Text("All") },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Accent.copy(alpha = 0.25f),
+                ),
+            )
+        }
+        items(GENRES, key = { it }) { genre ->
+            FilterChip(
+                selected = selected == genre,
+                onClick = { onSelect(if (selected == genre) null else genre) },
+                label = { Text(genre) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Accent.copy(alpha = 0.25f),
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun GenreGrid(
+    genre: String,
+    items: List<AnimeEntry>?,
+    loading: Boolean,
+    isOnline: Boolean,
+    onCardClick: (AnimeEntry) -> Unit,
+) {
+    when {
+        // Shimmer-while-loading mirrors v1.0's carousel loading state so the
+        // genre chip doesn't feel slower than the carousels below it.
+        loading && items == null -> Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator()
+        }
+        items.isNullOrEmpty() -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = when {
+                    !isOnline -> "Couldn't reach AniList.\nPull down to retry."
+                    else -> "No $genre anime found on AniList.\nTry another genre."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        else -> LazyVerticalGrid(
+            // Adaptive cells so the grid scales from a 320dp narrow phone
+            // (1 or 2 columns) to a tablet (3+ columns) without horizontal
+            // overflow. The hardcoded 140.dp poster card stays centred in
+            // each cell so the visual density matches the LazyRow carousels
+            // above.
+            columns = GridCells.Adaptive(minSize = 160.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+        ) {
+            // Each cell is sized by `GridCells.Adaptive(minSize = 160.dp)`,
+            // so we pass `Modifier.fillMaxWidth()` to the card and it scales
+            // 1:1 to the cell. The Card composable inside AnimePosterCard
+            // already fills its parent's width, so the poster block grows on
+            // tablets and shrinks on narrow phones without manual math.
+            gridItems(items, key = { it.anilistId }) { entry ->
+                AnimePosterCard(
+                    entry = entry,
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onCardClick(entry) },
                 )
             }
         }
@@ -314,6 +522,7 @@ private fun CarouselRow(
                 items(items, key = { it.anilistId }) { entry ->
                     AnimePosterCard(
                         entry = entry,
+                        modifier = Modifier.width(140.dp),
                         onClick = { onCardClick(entry) },
                     )
                 }
@@ -399,4 +608,3 @@ private fun SearchResultRow(entry: AnimeEntry, inList: Boolean, onAdd: () -> Uni
         }
     }
 }
-

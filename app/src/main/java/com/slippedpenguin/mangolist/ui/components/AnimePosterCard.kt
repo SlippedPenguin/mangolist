@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,10 +33,13 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
 /*
  * AnimePosterCard — compact vertical poster card used inside the horizontal
  * `LazyRow` carousels on the Explore screen (Popular / Trending / Coming
- * Soon / Top Rated). Distinct from `AnimeCard` (full-width list row):
+ * Soon / Top Rated) and the genre-filtered `LazyVerticalGrid` (one tile
+ * per genre result). Distinct from `AnimeCard` (full-width list row):
  *
- *   - 140dp wide, poster + title underneath (vs. cover-thumbnail + multi-line
- *     status row + trailing tier badge for `AnimeCard`).
+ *   - Width is caller-controlled via the `modifier` parameter. Carousels
+ *     pass `Modifier.width(140.dp)` so cards stay at fixed density across
+ *     the row; the genre grid passes `Modifier.fillMaxWidth()` so each
+ *     tile scales to its adaptive cell width on phones *and* tablets.
  *   - No status pill / progress text / tier badge. The Explore flows are
  *     browsing-only; tracking belongs on Watchlist.
  *   - No favourites / sync-pending badges — those overlay the user's local
@@ -55,9 +56,7 @@ fun AnimePosterCard(
     onClick: () -> Unit = {},
 ) {
     Column(
-        modifier = modifier
-            .width(140.dp)
-            .padding(4.dp),
+        modifier = modifier.padding(4.dp),
         verticalArrangement = Arrangement.Top,
     ) {
         Card(

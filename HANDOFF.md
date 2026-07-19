@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.0.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.0.4)  
+> **Latest documented release:** [v1.1.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.1.0)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -245,6 +245,17 @@ Quick reference for what's new since the last documented release.
 - `ui/screens/AiringScreen.kt` — `AiringMode` enum + `TabRow` + `progressByAnimeId` lookup map.
 - `data/AniListClient.kt` — `buildDiscoverEntry` helper + `getPopular` / `getTrending` / `getUpcoming` / `getTopRated`.
 - `graphql/com/slippedpenguin/mangolist/queries.graphql` — four new Apollo operations, all bound to `...AnimeCardFields`.
+
+---
+
+## v1.1 deltas (since v1.0)
+
+| Area | v1.0 | v1.1 |
+|---|---|---|
+| Explore genre filter | Carousels only (Popular / Trending / Coming Soon / Top Rated) plus the search bar | New horizontal `FilterChip` strip below the search bar: an "All" chip plus 18 AniList genre strings (Action, Adventure, Comedy, Drama, Ecchi, Fantasy, Horror, Mahou Shoujo, Mecha, Music, Mystery, Psychological, Romance, Sci-Fi, Slice of Life, Sports, Supernatural, Thriller). Tapping a chip swaps the four carousels for an adaptive grid of `AnimePosterCard` tiles for that genre, fetched via AniList's `Page.media(genre_in: [$genre], sort: POPULARITY_DESC)`. Tap "All" or the active chip again to restore the carousels. The chip strip dims to 40% alpha while the search bar owns the screen, so chip taps during a search are visibly inert. |
+| Mode precedence | One mode at a time: search OR carousels | Three modes in clear precedence order: search bar (≥ 2 chars) > selected genre chip > no selection (carousels). The chip strip stays visible in all three modes for fast pivoting. |
+| Pull-to-refresh while genre-active | Only refreshed the four carousels; the spinner dismissed before fetches finished in some scenarios | Also re-fetches the currently selected genre alongside the carousels; the spinner is held inside a `try { ... } finally { isRefreshing = false }` on the launched job so the indicator stays until both calls resolve. |
+| `AniListClient` Apollo surface | `SearchAnime`, four carousel queries, `GetMediaDetails`, `GetViewer`, `GetMediaListCollection`, `SaveMediaListEntry`, `ToggleFavourite`, `GetAiringSchedule` | Adds `GetAnimeByGenreQuery($genre, $perPage)` bound to `...AnimeCardFields`. `getByGenre(genre, perPage = 25)` reuses the same `buildDiscoverEntry` mapper as the carousel queries; canonicalises the genre to Title Case; short-circuits on blank strings; wrapped in `withNetwork(emptyList()) { withContext(Dispatchers.IO) { ... } }` matching the v1.0.4 patterns. |
 
 ---
 

@@ -4,6 +4,7 @@ import android.content.Context
 import com.apollographql.apollo.ApolloClient
 import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.graphql.GetAnimeByGenreQuery
 import com.slippedpenguin.mangolist.graphql.GetMediaDetailsQuery
 import com.slippedpenguin.mangolist.graphql.GetPopularAnimeQuery
 import com.slippedpenguin.mangolist.graphql.GetTopRatedAnimeQuery
@@ -309,6 +310,59 @@ class AniListClient(
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "getTopRated failed", e)
             emptyList()
+        }
+    }
+
+    /**
+     * Top [perPage] anime in a single [genre] on AniList. Used by
+     * ExploreScreen's chip strip — each `FilterChip` passes its label
+     * string through here, so the labels must match AniList's
+     * canonical genre strings (Action, Adventure, Comedy, …) exactly.
+     * AniList's `genre_in` is case-insensitive, but misspellings
+     * silently return zero rows, so we canonicalise to Title Case.
+     *
+     * Empty / unknown genres short-circuit to emptyList() so the chip
+     * strip doesn't surface a generic sync error on boot if a label is
+     * mis-typed.
+     */
+    suspend fun getByGenre(genre: String, perPage: Int = 25): List<AnimeEntry> {
+        if (genre.isBlank()) return emptyList()
+        val canonical = genre.trim().replaceFirstChar { it.uppercase() }
+        return withNetwork(emptyList()) {
+            try {
+                withContext(Dispatchers.IO) {
+                    val response = apollo.query(
+                        GetAnimeByGenreQuery(genre = canonical, perPage = perPage),
+                    ).execute()
+                    val now = System.currentTimeMillis()
+                    response.data?.Page?.media.orEmpty()
+                        .filterNotNull()
+                        .mapNotNull { entry ->
+                            val m = entry.animeCardFields ?: return@mapNotNull null
+                            buildDiscoverEntry(
+                                anilistId    = m.id,
+                                english      = m.title?.english,
+                                romaji       = m.title?.romaji,
+                                cover        = m.coverImage?.large ?: m.coverImage?.medium,
+                                coverColor   = m.coverImage?.color,
+                                format       = m.format?.rawValue,
+                                episodes     = m.episodes,
+                                averageScore = m.averageScore,
+                                year         = m.startDate?.year,
+                                now          = now,
+                            )
+                        }
+                }  // withContext
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // Re-throw cooperative cancellation explicitly so the outer
+                // LaunchedEffect's key change (rapid chip taps) propagates as
+                // a real cancellation rather than being swallowed as a sync
+                // error that returns an empty list.
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "getByGenre failed for $canonical", e)
+                emptyList()
+            }
         }
     }
 

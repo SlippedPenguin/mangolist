@@ -197,6 +197,21 @@ query GetTopRatedAnime {
   }
 }
 
+# Genre-filtered top results for a single genre on the Explore tab's chip
+# strip. Returns ~25 media items ordered by POPULARITY_DESC so the user
+# sees the "biggest" titles in that genre first. Genre is AniList's free-form
+# string (case-insensitive on AniList's side) — we pass-through whatever the
+# chip text is, so chip labels must match AniList's canonical genre strings
+# (Action, Romance, Isekai, …). See GenreChip.GENRES in ExploreScreen.kt
+# for the curated chip set used in v1.1.
+query GetAnimeByGenre($genre: String!, $perPage: Int = 25) {
+  Page(perPage: $perPage) {
+    media(genre_in: [$genre], type: ANIME, sort: [POPULARITY_DESC]) {
+      ...AnimeCardFields
+    }
+  }
+}
+
 fragment AnimeCardFields on Media {
   id
   title { romaji english }
