@@ -570,7 +570,7 @@ class AniListClient(
                         }
                     val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                         ?.filterIsInstance<JsonObject>()
-                        ?.filter { (it["isCustomList"] as? kotlinx.serialization.json.JsonPrimitive)?.boolean != true }
+                        ?.filter { (it["isCustomList"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull != true }
                         ?.flatMap { list ->
                             (list["entries"] as? kotlinx.serialization.json.JsonArray)
                                 ?.filterIsInstance<JsonObject>()

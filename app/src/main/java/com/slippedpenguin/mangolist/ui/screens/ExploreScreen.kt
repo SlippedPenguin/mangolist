@@ -312,7 +312,7 @@ private fun MediaTypeSegmentedControl(
                 selected = selected == opt,
                 onClick = { onSelect(opt) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                colors = SegmentedButtonDefaults.segmentedButtonColors(
+                colors = SegmentedButtonDefaults.colors(
                     activeContainerColor = Accent.copy(alpha = 0.25f),
                 ),
             ) {

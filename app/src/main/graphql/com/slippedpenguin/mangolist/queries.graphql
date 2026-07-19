@@ -273,6 +273,7 @@ fragment AnimeCardFields on Media {
   bannerImage
   # `type` is the discriminator between anime and manga. Always present on
   # AniList responses; we surface it in the data layer via mediaType mapping.
+  type
 }
 
 fragment ListEntryFields on MediaList {
