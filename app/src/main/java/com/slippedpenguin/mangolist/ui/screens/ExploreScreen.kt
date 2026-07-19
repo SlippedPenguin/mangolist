@@ -93,13 +93,13 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExploreScreen(navController: NavController) {
+fun ExploreScreen(navController: NavController, forcedMediaType: String? = null) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
 
     var query by remember { mutableStateOf("") }
-    var mediaType by remember { mutableStateOf("ANIME") }  // v1.2: "ANIME" or "MANGA"
+    var mediaType by remember { mutableStateOf(forcedMediaType ?: "ANIME") }  // v1.4: lockable from parent tab
     var popular by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var trending by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var upcoming by remember { mutableStateOf<List<AnimeEntry>?>(null) }
@@ -217,13 +217,16 @@ fun ExploreScreen(navController: NavController) {
 
         // v1.2: media-type segmented control. Anime / Manga. Toggling
         // switches every carousel and the genre chip strip to manga.
-        MediaTypeSegmentedControl(
-            selected = mediaType,
-            onSelect = { mediaType = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-        )
+        // v1.4: hidden when forcedMediaType is set (Anime/Manga tabs lock it).
+        if (forcedMediaType == null) {
+            MediaTypeSegmentedControl(
+                selected = mediaType,
+                onSelect = { mediaType = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
 
         OutlinedTextField(
             value = query,
@@ -264,16 +267,15 @@ fun ExploreScreen(navController: NavController) {
             when {
                 isSearching -> SearchResultsList(
                     results = searchResults,
-                    loading = searching,
-                    inListIds = inListIds,
-                    onAdd = { entry ->
-                        scope.launch {
-                            if (entry.anilistId !in inListIds) {
-                                app.database.animeDao().upsert(entry)
+                    loading = searching,                        inListIds = inListIds,
+                        onAdd = { entry ->
+                            scope.launch {
+                                if (entry.anilistId !in inListIds) {
+                                    app.database.animeDao().upsert(entry)
+                                }
+                                navController.navigate("detail/${entry.mediaType}/${entry.anilistId}")
                             }
-                            navController.navigate("detail/${entry.anilistId}")
-                        }
-                    },
+                        },
                 )
                 isGenreSelected -> GenreGrid(
                     genre = selectedGenre!!,
@@ -281,7 +283,7 @@ fun ExploreScreen(navController: NavController) {
                     loading = genreLoading,
                     isOnline = isOnline,
                     onCardClick = { entry ->
-                        navController.navigate("detail/${entry.anilistId}")
+                        navController.navigate("detail/${entry.mediaType}/${entry.anilistId}")
                     },
                 )
                 else -> CarouselColumn(
@@ -293,7 +295,7 @@ fun ExploreScreen(navController: NavController) {
                     mangaReleases = mangaReleases,
                     isOnline = isOnline,
                     onCardClick = { entry ->
-                        navController.navigate("detail/${entry.anilistId}")
+                        navController.navigate("detail/${entry.mediaType}/${entry.anilistId}")
                     },
                 )
             }

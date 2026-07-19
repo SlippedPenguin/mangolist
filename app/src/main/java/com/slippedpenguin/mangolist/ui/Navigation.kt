@@ -2,11 +2,10 @@ package com.slippedpenguin.mangolist.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Leaderboard
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.TravelExplore
-import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -19,54 +18,52 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.navigation.NavController
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.slippedpenguin.mangolist.ui.screens.ExploreScreen
-import com.slippedpenguin.mangolist.ui.screens.AiringScreen
+import androidx.navigation.navArgument
+import androidx.navigation.navArgument
+import com.slippedpenguin.mangolist.ui.screens.AnimeTabScreen
 import com.slippedpenguin.mangolist.ui.screens.DetailScreen
+import com.slippedpenguin.mangolist.ui.screens.HomeScreen
+import com.slippedpenguin.mangolist.ui.screens.MangaTabScreen
 import com.slippedpenguin.mangolist.ui.screens.ProfileScreen
 import com.slippedpenguin.mangolist.ui.screens.TiersScreen
-import com.slippedpenguin.mangolist.ui.screens.WatchlistScreen
 
 /*
- * Sealed family of bottom-bar destinations. Compared to a flat List<String>
- * this keeps the icon + label + route colocated so adding a new tab is one
- * line + one `composable` call.
+ * v1.4: Anihyou-style bottom navigation.
+ *
+ *   - Home    — watchlist overview + activity + tier access
+ *   - Anime   — anime watchlist, explore, and airing schedule (mediaType=ANIME)
+ *   - Manga   — manga watchlist and explore (mediaType=MANGA)
+ *   - Profile — sign-in, stats, sync, score-scale toggle
+ *
+ * The standalone Watchlist / Explore / Tiers / Airing tabs from v1.3 are
+ * absorbed into the Home / Anime / Manga tabs. Each screen is a standalone
+ * composable that owns its own sub-tab row.
  */
 sealed class BottomDest(
     val route:  String,
     val label:  String,
     val icon:   ImageVector,
 ) {
-    data object Watchlist : BottomDest("watchlist", "Watch",   Icons.Outlined.Visibility)
-    data object Explore   : BottomDest("explore", "Explore", Icons.Outlined.TravelExplore)
-    data object Tiers     : BottomDest("tiers",     "Tiers",  Icons.Outlined.Leaderboard)
-    data object Airing    : BottomDest("airing",    "Airing", Icons.Outlined.CalendarMonth)
-    data object Profile   : BottomDest("profile",   "Profile", Icons.Outlined.Person)
+    data object Home    : BottomDest("home",    "Home",    Icons.Outlined.Home)
+    data object Anime   : BottomDest("anime",   "Anime",   Icons.Outlined.PlayCircle)
+    data object Manga   : BottomDest("manga",   "Manga",   Icons.Outlined.MenuBook)
+    data object Profile : BottomDest("profile", "Profile", Icons.Outlined.Person)
 }
 
 private val bottomDestinations = listOf(
-    BottomDest.Watchlist,
-    BottomDest.Explore,
-    BottomDest.Tiers,
-    BottomDest.Airing,
+    BottomDest.Home,
+    BottomDest.Anime,
+    BottomDest.Manga,
     BottomDest.Profile,
 )
 
-/*
- * Root Scaffold + NavHost.
- *   - Top app bar mirrors the bottom bar's `isOnBottomNav` gate so the
- *     Detail screen's hero image keeps the full window.
- *   - Bottom nav uses `restoreState = true` to preserve scroll position
- *     per tab when switching.
- *   - The app bar's title is the route's `label` so adding a new tab is
- *     just one entry in `BottomDest`.
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
@@ -112,19 +109,24 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = BottomDest.Watchlist.route,
+            startDestination = BottomDest.Home.route,
             modifier = Modifier.padding(padding),
         ) {
-            composable(BottomDest.Watchlist.route) { WatchlistScreen(navController) }
-            composable(BottomDest.Explore.route)  { ExploreScreen(navController) }
-            composable(BottomDest.Tiers.route)     { TiersScreen(navController) }
-            composable(BottomDest.Airing.route)    {
-                AiringScreen(onNavigateDetail = { id -> navController.navigate("detail/$id") })
-            }
-            composable(BottomDest.Profile.route)   { ProfileScreen(navController) }
-            composable("detail/{anilistId}") { entry ->
-                val id = entry.arguments?.getString("anilistId")?.toIntOrNull() ?: 0
-                DetailScreen(navController, anilistId = id)
+            composable(BottomDest.Home.route)    { HomeScreen(navController) }
+            composable(BottomDest.Anime.route)   { AnimeTabScreen(navController) }
+            composable(BottomDest.Manga.route)   { MangaTabScreen(navController) }
+            composable(BottomDest.Profile.route) { ProfileScreen(navController) }
+            composable("tiers")                  { TiersScreen(navController) }
+            composable(
+                route = "detail/{mediaType}/{anilistId}",
+                arguments = listOf(
+                    navArgument("mediaType") { type = NavType.StringType; defaultValue = "ANIME" },
+                    navArgument("anilistId") { type = NavType.IntType },
+                ),
+            ) { entry ->
+                val mediaType = entry.arguments?.getString("mediaType") ?: "ANIME"
+                val id = entry.arguments?.getInt("anilistId") ?: 0
+                DetailScreen(navController, anilistId = id, initialMediaType = mediaType)
             }
         }
     }

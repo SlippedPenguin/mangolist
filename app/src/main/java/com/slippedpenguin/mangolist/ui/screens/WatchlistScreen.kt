@@ -226,7 +226,7 @@ fun WatchlistScreen(navController: NavController) {
                         items(filtered, key = { it.anilistId }) { entry ->
                             AnimeCard(
                                 entry = entry,
-                                onClick = { navController.navigate("detail/${entry.anilistId}") },
+                                onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                                 showSyncPending = true,
                                 showRelativeTimestamp = true,
                                 showFavorite = true,

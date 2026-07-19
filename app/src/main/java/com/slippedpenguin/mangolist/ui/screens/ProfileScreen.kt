@@ -182,7 +182,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "${entries.size} anime in your local list",
+            text = "${entries.size} entries in your local list",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
             textAlign = TextAlign.Center,

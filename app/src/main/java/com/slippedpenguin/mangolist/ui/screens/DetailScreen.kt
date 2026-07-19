@@ -112,7 +112,7 @@ import java.util.Locale
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun DetailScreen(navController: NavController, anilistId: Int) {
+fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType: String = "ANIME") {
     val context = LocalContext.current
     val app  = remember { context.applicationContext as AnimeApp }
     val dao  = remember { app.database.animeDao() }
@@ -125,10 +125,10 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     var fetchedDetails  by remember { mutableStateOf<MediaDetails?>(null) }
     var detailsLoaded   by remember { mutableStateOf(false) }
 
-    // If the network fetch failed or we're offline, fall back to a MediaDetails
-    // built from the cached local entry so the screen is still usable. This is
-    // computed reactively so edits to the entry update the UI without re-triggering
-    // the network call.
+    // v1.4: resolve mediaType from Room entry first, then fall back to
+    // the navigation argument (passed from the calling screen). This fixes
+    // the bug where tapping a manga card on Explore would fetch details
+    // with type=ANIME because the entry wasn't yet in Room.
     val details = fetchedDetails ?: entry?.let { buildFallbackDetails(it) }
     var showTierSheet   by remember { mutableStateOf(false) }
     var showStatusSheet by remember { mutableStateOf(false) }
@@ -138,10 +138,12 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
     var synopsisExpanded by rememberSaveable { mutableStateOf(false) }
     var syncFeedback    by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
 
-    LaunchedEffect(anilistId, entry?.mediaType) {
+    // v1.4: resolve mediaType once so both the fetch and relation navigation use it.
+    val resolvedMediaType = entry?.mediaType ?: initialMediaType
+
+    LaunchedEffect(anilistId, entry?.mediaType, initialMediaType) {
         detailsLoaded = false
-        val mediaType = entry?.mediaType ?: "ANIME"
-        fetchedDetails = app.anilistClient.getMediaDetails(anilistId, mediaType)
+        fetchedDetails = app.anilistClient.getMediaDetails(anilistId, resolvedMediaType)
         detailsLoaded = true
     }
 
@@ -254,7 +256,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
                 item {
                     RelationsRow(
                         relations = relations,
-                        onNavigate = { relationId -> navController.navigate("detail/$relationId") },
+                        onNavigate = { relationId -> navController.navigate("detail/$resolvedMediaType/$relationId") },
                     )
                 }
             }

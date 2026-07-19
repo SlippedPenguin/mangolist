@@ -137,7 +137,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         AnimeCard(
                             entry = entry,
                             rankText = rankWithinTierText(entry, entries),
-                            onClick = { navController.navigate("detail/${entry.anilistId}") },
+                            onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                             onLongClick = { longPressEntry = entry },
                         )
                     }
@@ -153,7 +153,7 @@ fun TiersScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     AnimeCard(
                         entry = entry,
                         rankText = null,
-                        onClick = { navController.navigate("detail/${entry.anilistId}") },
+                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                         onLongClick = { longPressEntry = entry },
                     )
                 }
