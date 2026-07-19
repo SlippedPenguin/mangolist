@@ -181,6 +181,11 @@ fun ExploreScreen(navController: NavController) {
         searching = false
     }
 
+    // Compute search-active BEFORE the LaunchedEffects below read it —
+    // forward references to a later-declared `val` are a Kotlin compile
+    // error even though the value would be in scope at composition time.
+    val isSearching = query.trim().length >= 2
+
     LaunchedEffect(selectedGenre, isSearching) {
         if (isSearching) return@LaunchedEffect
         val g = selectedGenre ?: run {
@@ -196,8 +201,6 @@ fun ExploreScreen(navController: NavController) {
             genreLoading = false
         }
     }
-
-    val isSearching = query.trim().length >= 2
     val isGenreSelected = selectedGenre != null && !isSearching
 
     Column(modifier = Modifier.fillMaxSize()) {

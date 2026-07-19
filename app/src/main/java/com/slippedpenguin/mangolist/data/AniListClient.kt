@@ -350,7 +350,12 @@ class AniListClient(
                     val response = apollo.query(
                         GetAnimeByGenreQuery(
                             genre = canonical,
-                            perPage = perPage,
+                            // Apollo Kotlin 4.x: any GraphQL variable with a
+                            // schema-default becomes Optional<T?> in the
+                            // generated constructor. Wrap so the caller's
+                            // explicit value lands instead of falling back
+                            // to the schema default (25).
+                            perPage = com.apollographql.apollo.api.Optional.present(perPage),
                             type = toAniListType(type),
                         ),
                     ).execute()
@@ -398,7 +403,12 @@ class AniListClient(
     suspend fun getMangaReleases(perPage: Int = 50): List<AnimeEntry> = withNetwork(emptyList()) {
         try {
             withContext(Dispatchers.IO) {
-                val response = apollo.query(GetMangaReleasesQuery(perPage = perPage)).execute()
+                // GetMangaReleasesQuery has no GraphQL variables — the
+                // .graphql hardcodes perPage:50, so Apollo Kotlin generates
+                // a parameterless constructor. We still let callers cap the
+                // page size via getMangaReleases(perPage = N), but the
+                // ceiling is currently bounded by the GraphQL literal.
+                val response = apollo.query(GetMangaReleasesQuery()).execute()
                 val now = System.currentTimeMillis()
                 response.data?.Page?.media.orEmpty().filterNotNull().mapNotNull { entry ->
                     val m = entry.animeCardFields ?: return@mapNotNull null
