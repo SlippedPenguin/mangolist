@@ -118,11 +118,24 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 val tok = accessToken
                 val id  = userId
                 if (!tok.isNullOrBlank() && !id.isNullOrBlank()) {
-                    val result = app.anilistClient.syncUserList(tok, id.toInt())
-                    if (result.entries != null) {
+                    // v1.3: pull both ANIME and MANGA lists. Previously only
+                    // ANIME was synced here, which is why manga never showed
+                    // on the Watch tab after a Profile pull-to-refresh.
+                    val animeResult = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
+                    val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                    val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                    if (combined.isNotEmpty()) {
                         val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                        val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                        val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                         app.database.animeDao().upsertAll(merged)
+                    }
+                    val firstErr = animeResult.error ?: mangaResult.error
+                    if (firstErr != null) {
+                        Toast.makeText(
+                            context,
+                            if (firstErr.length > 150) firstErr.take(150) + "…" else firstErr,
+                            Toast.LENGTH_LONG,
+                        ).show()
                     }
                 }
             } finally {
@@ -387,14 +400,19 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                             return@launch
                         }
                         Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
-                        val result = app.anilistClient.syncUserList(token, id.toInt())
-                        if (result.entries != null) {
+                        // v1.3: sync both ANIME and MANGA lists from the
+                        // Profile "Sync now" button so manga entries aren't
+                        // left behind.
+                        val animeResult = app.anilistClient.syncUserList(token, id.toInt(), "ANIME")
+                        val mangaResult = app.anilistClient.syncUserList(token, id.toInt(), "MANGA")
+                        val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                        if (combined.isNotEmpty()) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                            val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                             app.database.animeDao().upsertAll(merged)
-                            Toast.makeText(context, "Synced ${merged.size} anime", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Synced ${merged.size} entries", Toast.LENGTH_SHORT).show()
                         } else {
-                            val raw = result.error ?: "Sync failed"
+                            val raw = animeResult.error ?: mangaResult.error ?: "Sync failed"
                             val msg = if (raw.length > 150) raw.take(150) + "…" else raw
                             Toast.makeText(context, "Sync failed: $msg", Toast.LENGTH_LONG).show()
                         }

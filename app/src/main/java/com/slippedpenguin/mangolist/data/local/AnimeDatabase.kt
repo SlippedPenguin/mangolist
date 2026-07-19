@@ -31,7 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [AnimeEntry::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class AnimeDatabase : RoomDatabase() {
@@ -76,6 +76,25 @@ abstract class AnimeDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v4 → v5 — manga chapter/volume counts.
+         *
+         * Adds `chapters` and `volumes` nullable INTEGER columns. Existing
+         * rows keep NULL for both; the app falls back to `episodes` when
+         * these are absent, preserving v1.2 behaviour for already-synced
+         * entries until the next pull refreshes them.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE anime_entries ADD COLUMN chapters INTEGER"
+                )
+                db.execSQL(
+                    "ALTER TABLE anime_entries ADD COLUMN volumes INTEGER"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AnimeDatabase? = null
 
@@ -86,7 +105,7 @@ abstract class AnimeDatabase : RoomDatabase() {
                     AnimeDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
             }

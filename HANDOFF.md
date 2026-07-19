@@ -2,8 +2,8 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.2.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.2.0)  
-> **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
+> **Latest documented release:** [v1.2.1](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.2.1)  
+> **Working tree:** v1.2.1 bug-fix release (rating sync, HTTP 429, manga watchlist, explore debounce)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 

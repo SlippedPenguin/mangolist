@@ -85,6 +85,7 @@ import com.slippedpenguin.mangolist.work.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import java.util.Locale
 
 /*
@@ -365,7 +366,7 @@ fun DetailScreen(navController: NavController, anilistId: Int) {
         )
     }
     if (showScorePicker) {
-        ScorePickerDialog(
+        ScoreInputDialog(
             current = entry?.personalScore,
             scoreScale = scoreScale,
             onSave = { newScore ->
@@ -838,9 +839,22 @@ private fun TrackingCard(
             }
         }
         Spacer(Modifier.height(12.dp))
+        // v1.3: manga/novel-aware progress row. Anime uses episodes,
+        // manga uses chapters, novels use volumes.
+        val progressUnit = when {
+            e.format == "NOVEL" || e.format == "LIGHT_NOVEL" -> "vol"
+            e.mediaType == "MANGA" -> "ch"
+            else -> "ep"
+        }
+        val progressTotal = when {
+            e.format == "NOVEL" || e.format == "LIGHT_NOVEL" -> e.volumes ?: e.episodes
+            e.mediaType == "MANGA" -> e.chapters ?: e.episodes
+            else -> e.episodes
+        }
         EpisodeRow(
             current = e.currentEp,
-            total = e.episodes,
+            total = progressTotal,
+            unit = progressUnit,
             onMinus = {
                 scope.launch {
                     if (e.currentEp <= 0) return@launch
@@ -938,7 +952,13 @@ private fun TrackingCard(
 }
 
 @Composable
-private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: () -> Unit) {
+private fun EpisodeRow(
+    current: Int,
+    total: Int?,
+    unit: String,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -955,7 +975,7 @@ private fun EpisodeRow(current: Int, total: Int?, onMinus: () -> Unit, onPlus: (
                 Text(text = "−", style = MaterialTheme.typography.titleLarge)
             }
             Text(
-                text = "$current / ${total ?: "?"}",
+                text = "$current / ${total ?: "?"} $unit",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
@@ -1142,76 +1162,117 @@ private fun NotesDialog(
 }
 
 /*
- * ScorePickerDialog — grid of tappable scores (0–10, step 0.5). The
- * current score is highlighted. Tapping a value dismisses and saves.
+ * ScoreInputDialog — typed numeric score entry. The user types a value
+ * in the currently selected scale (OUT_OF_10 -> "7.5", OUT_OF_100 ->
+ * "75"). The value is parsed, clamped to 0-100, converted to the
+ * internal 0-100 Int representation, and saved. A "Clear rating"
+ * button removes the score entirely.
  */
 @Composable
-private fun ScorePickerDialog(
+private fun ScoreInputDialog(
     current: Int?,
     scoreScale: ScoreScale,
     onSave: (Int?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var selected by remember { mutableStateOf(current) }
+    // Seed the text field with the current score converted to the
+    // user's chosen scale. Empty string means "no rating".
+    val initialText = remember(current, scoreScale) {
+        if (current == null || current <= 0) return@remember ""
+        when (scoreScale) {
+            ScoreScale.OUT_OF_10 -> "%.1f".format(current / 10.0)
+            ScoreScale.OUT_OF_100 -> current.toString()
+        }
+    }
+    var draft by remember { mutableStateOf(initialText) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    val maxLabel = when (scoreScale) {
+        ScoreScale.OUT_OF_10 -> "10"
+        ScoreScale.OUT_OF_100 -> "100"
+    }
+    val hint = when (scoreScale) {
+        ScoreScale.OUT_OF_10 -> "0 – $maxLabel (e.g. 7.5)"
+        ScoreScale.OUT_OF_100 -> "0 – $maxLabel"
+    }
+    val keyboardType = when (scoreScale) {
+        ScoreScale.OUT_OF_10 -> androidx.compose.ui.text.input.KeyboardType.Decimal
+        ScoreScale.OUT_OF_100 -> androidx.compose.ui.text.input.KeyboardType.Number
+    }
+
+    fun parseScore(input: String): Int? {
+        if (input.isBlank()) return null
+        return when (scoreScale) {
+            ScoreScale.OUT_OF_10 -> {
+                val parsed = input.trim().toDoubleOrNull()
+                    ?: return null.also { error = "Enter a number like 7.5" }
+                when {
+                    parsed < 0.0 || parsed > 10.0 -> {
+                        error = "Score must be between 0 and 10"
+                        null
+                    }
+                    else -> (parsed * 10).roundToInt().coerceIn(0, 100)
+                }
+            }
+            ScoreScale.OUT_OF_100 -> {
+                val parsed = input.trim().toIntOrNull()
+                    ?: return null.also { error = "Enter a whole number like 75" }
+                when {
+                    parsed < 0 || parsed > 100 -> {
+                        error = "Score must be between 0 and 100"
+                        null
+                    }
+                    else -> parsed
+                }
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rate this anime") },
+        title = { Text("Rate this entry") },
         text = {
-            val sel = selected
             Column {
-                Text(
-                    text = if (sel != null)
-                        ScoreDisplay.label(sel, scoreScale)
-                    else "No rating",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Accent,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                )
-                Text(
-                    text = ScoreDisplay.axisLabel(scoreScale),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = {
+                        draft = it
+                        error = null
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    // Quick-set buttons: step labels per the chosen scale
-                    // (OUT_OF_10 -> "1.0".."10.0" | OUT_OF_100 -> "10".."100"
-                    //  in increments of 10).
-                    (1..10).forEach { star ->
-                        val scoreVal = star * 10
-                        val filled = sel != null && sel >= scoreVal
-                        TextButton(
-                            onClick = {
-                                selected = if (selected == scoreVal) null else scoreVal
-                            },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(0.dp),
-                        ) {
-                            Text(
-                                text = ScoreDisplay.stepLabel(star, scoreScale),
-                                color = if (filled) Accent else TextMuted,
-                                fontSize = 22.sp,
-                            )
-                        }
-                    }
+                    label = { Text("Score") },
+                    placeholder = { Text(hint) },
+                    isError = error != null,
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = keyboardType,
+                    ),
+                )
+                if (error != null) {
+                    Text(
+                        text = error!!,
+                        color = Accent,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
+                // v1.3: explicit clear-rating action so users don't have to
+                // delete the text field to remove their score.
                 TextButton(
-                    onClick = { selected = null },
-                    modifier = Modifier.fillMaxWidth(),
-                ) { Text("Clear rating", color = TextSecondary) }
+                    onClick = { onSave(null); onDismiss() },
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    Text("Clear rating", color = TextSecondary)
+                }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                onSave(selected)
-                onDismiss()
+                val score = parseScore(draft)
+                if (error == null) {
+                    onSave(score)
+                    onDismiss()
+                }
             }) { Text("Save") }
         },
         dismissButton = {

@@ -24,6 +24,11 @@ import androidx.room.PrimaryKey
  * AniList assigns globally-unique ids across ANIME+MANGA, so `(anilistId)`
  * remains a safe PK — `(anilistId, mediaType)` would be overkill here and
  * would complicate every existing Room query.
+ *
+ * v1.3: added `chapters` and `volumes` columns so manga entries can track
+ * both chapter and volume progress independently of anime episode counts.
+ * Existing rows default to NULL for these columns; `currentEp` continues
+ * to store the active progress value (episodes for anime, chapters for manga).
  */
 @Entity(tableName = "anime_entries")
 data class AnimeEntry(
@@ -35,7 +40,9 @@ data class AnimeEntry(
     val cover: String?,
     val coverColor: String?,
     val format: String?,
-    val episodes: Int?,
+    val episodes: Int?,               // anime episode count
+    val chapters: Int? = null,        // manga chapter count (v1.3)
+    val volumes: Int? = null,           // manga volume count (v1.3)
     val averageScore: Int?,
     val year: Int?,
     val synopsis: String?,

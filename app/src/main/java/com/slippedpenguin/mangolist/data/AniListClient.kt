@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.roundToInt
 
 /*
  * AniListClient — thin wrapper over Apollo Kotlin 4.x for the AniList GraphQL
@@ -646,6 +647,11 @@ class AniListClient(
 
         val score = (entry["score"] as? kotlinx.serialization.json.JsonPrimitive)?.double
 
+        // v1.3: round-trip AniList's 0.0-10.0 Float score to the app's
+        // internal 0-100 Int. Use roundToInt() so floating-point noise
+        // like 7.7*10 = 76.999... doesn't truncate to 76.
+        val personalScore = score?.let { (it * 10).roundToInt() }
+
         // Manga has `chapters` instead of `episodes`. For manga we read
         // `chapters`; for anime, `episodes`.
         val totalUnits = if (resolvedType == "MANGA") {
@@ -678,7 +684,7 @@ class AniListClient(
             currentEp     = (entry["progress"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: 0,
             status        = localStatus,
             notes         = (entry["notes"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "",
-            personalScore = score?.let { (it * 10).toInt() },
+            personalScore = personalScore,
             favourite     = (media["isFavourite"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull ?: false,
             listEntryId   = (entry["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
             updatedAt     = editTime,

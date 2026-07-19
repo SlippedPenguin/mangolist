@@ -203,12 +203,18 @@ private fun relativeTimeText(epochMs: Long): String =
 /*
  * Tiny helper — formats "0 / 12" (or "12 / 12 · completed") under each card.
  * Lives in this file because every AnimeCard slot needs the same shape.
+ * v1.3: manga/novel-aware unit label.
  */
 @Composable
 private fun entryProgressText(entry: AnimeEntry) {
     val total = entry.episodes
     val now = entry.currentEp
-    val text = if (total != null && total > 0) "$now / $total" else "$now ep"
+    val unit = when {
+        entry.format == "NOVEL" || entry.format == "LIGHT_NOVEL" -> "vol"
+        entry.mediaType == "MANGA" -> "ch"
+        else -> "ep"
+    }
+    val text = if (total != null && total > 0) "$now / $total $unit" else "$now $unit"
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
