@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v0.9.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v0.9.0)  
+> **Latest documented release:** [v1.0.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.0.4)  
 > **Working tree:** contains v0.8+ features not yet tagged as a release (see *v0.8+ deltas* below)  
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
@@ -149,34 +149,40 @@ mangolist/
 
 ## What's missing (next priorities)
 
-### High priority
+> Priority labels reflect user-facing impact for *this* daily-use personal app, not effort:
+> - **High** — gaps the user runs into every session, or that block a whole feature category.
+> - **Polish** — visible-but-small quality items; ship whenever convenient.
 
-1. **Per-screen polish backlog** — the v1.0 round shipped the Explore feature
-   switch and AiringUI tabs; the remaining quality items live here. The
-   Airing `'On my list'` filter relies on the v0.6 `GetAiringSchedule`
-   response, which returns `media { id }` only — to enrich cards with the
-   AniList averagescore / status / banner the `'All airing'` path needs a
-   separate `Page.media` call keyed off the same `airingSchedules.media.id`
-   so the cards stop showing the placeholder cover color when AsyncImage
-   fails to fetch.
+### High (user-blocking gaps)
 
-### Medium priority
+1. **Genre / Tag filters on Explore** — the chip strip AniHyou has under
+   Discover (`Action`, `Romance`, `Isekai`, …). AniList's
+   `Page.media(genre_in: ...)` accepts a genre list — one chip strip +
+   reusable `AnimePosterCard` + one `getByGenre(genre)` Apollo query covers
+   the whole space. Tapping a chip replaces (or supplements) the carousels
+   with a grid of that genre's top results.
+2. **Manga support** — every AniList query today is hardcoded
+   `type: ANIME`. `AnimeEntry` already carries manga-compatible fields
+   (`format` already accepts `MANGA` values), so the data layer absorbs
+   most of the change. End state: a media-type toggle on Explore +
+   routing, with all Apollo queries exposing a `type` parameter.
+   `getAiringSchedule` is anime-only (queries `Page.airingSchedules`,
+   which doesn't exist for MANGA); manga needs a sibling
+   `getMangaReleases` (or similar) hitting
+   `Page.media(type: MANGA, status: RELEASING, sort: [START_DATE_DESC])`.
+   Airing-time math is replaced by start-date proximity.
 
-1. **Push notifications (AniHyou parity)** — Low #3 churned into Medium once
-   the user-requested polling became obvious. Best path: OneTimeWorkRequest
-   keyed off each anime's `nextAiringEpisode.airingAt`, scheduled from
-   `MainActivity.onResume` and after each local edit in `DetailScreen` —
-   fires local notification `'Episode N of TITLE airing today'` + small
-   action to open DetailScreen. FCM is overkill for a personal-use app.
-2. **Discover sections beyond the big four** — Genre / Tag filters
-   (`Action`, `Romance`, `Isekai`, …). AniList's `Page.media(genre_in: ...)`
-   accepts a genre list. One genre chip strip + reusable `AnimePosterCard`
-   + a single `getByGenre(genre)` Apollo query covers the whole space.
+### Polish (visible-but-small)
 
-### Low priority
-
-1. **Manga support** — queries are hardcoded `type: ANIME`. `AnimeEntry` already carries `MANGA`-compatible fields (`format`), so it's mostly a query + UI polish effort.
-2. **Play Store release** — needs a release keystore (debug-signed APK is sideload-only today), Play Console listing, listing assets.
+1. **Airing `'On my list'` enrichment** — the filter relies on the v0.6
+   `GetAiringSchedule` response, which returns `media { id }` only. To
+   surface AniList's average score / status / banner on each card
+   (instead of the placeholder cover color when `AsyncImage` fails), the
+   `'All airing'` path needs a separate `Page.media` call keyed off the
+   same `airingSchedules.media.id`s.
+2. **Per-screen polish backlog** — visual leftovers from the v1.0 round
+   (any buttons that still render `null`, emoji icons that should be
+   text/native, the tier-list re-think, score-scale default-out-of-100).
 
 ---
 
@@ -292,5 +298,3 @@ gh run list --repo SlippedPenguin/mangolist --workflow=release.yml --limit 1 --j
 - **`exchangeCodeForToken` sends `client_id` as Int**, not String. AniList's Laravel Passport rejects the string form.
 - **User must update AniList Developer settings** to match `com.slippedpenguin.mangolist://callback` — if they change it back to the scheme-only form, login will break again.
 - **`AnimeEntry.preserveLocalFields(existing)`** keeps tier/elo during sync — always use this when upserting synced data.
-- **Sync button is gated on `tier != null`** — open question whether this is intentional (see *What's missing → #2*).
-- **`saveEntry` does not push `notes`** — known bug, see *What's missing → #3*.
