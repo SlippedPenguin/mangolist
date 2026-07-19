@@ -62,6 +62,8 @@ import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.statusColor
 import com.slippedpenguin.mangolist.ui.theme.tierColor
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.util.Locale
@@ -118,11 +120,14 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 val tok = accessToken
                 val id  = userId
                 if (!tok.isNullOrBlank() && !id.isNullOrBlank()) {
-                    // v1.3: pull both ANIME and MANGA lists. Previously only
-                    // ANIME was synced here, which is why manga never showed
-                    // on the Watch tab after a Profile pull-to-refresh.
-                    val animeResult = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
-                    val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                    // v1.3: pull both ANIME and MANGA lists in parallel.
+                    // Previously only ANIME was synced here, which is why
+                    // manga never showed on the Watch tab after a Profile
+                    // pull-to-refresh.
+                    val (animeResult, mangaResult) = awaitAll(
+                        async { app.anilistClient.syncUserList(tok, id.toInt(), "ANIME") },
+                        async { app.anilistClient.syncUserList(tok, id.toInt(), "MANGA") },
+                    )
                     val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                     if (combined.isNotEmpty()) {
                         val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
@@ -402,9 +407,11 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
                         // v1.3: sync both ANIME and MANGA lists from the
                         // Profile "Sync now" button so manga entries aren't
-                        // left behind.
-                        val animeResult = app.anilistClient.syncUserList(token, id.toInt(), "ANIME")
-                        val mangaResult = app.anilistClient.syncUserList(token, id.toInt(), "MANGA")
+                        // left behind. Run the two calls in parallel.
+                        val (animeResult, mangaResult) = awaitAll(
+                            async { app.anilistClient.syncUserList(token, id.toInt(), "ANIME") },
+                            async { app.anilistClient.syncUserList(token, id.toInt(), "MANGA") },
+                        )
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }

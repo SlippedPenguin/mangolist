@@ -858,7 +858,7 @@ private fun TrackingCard(
             onMinus = {
                 scope.launch {
                     if (e.currentEp <= 0) return@launch
-                    val cap = e.episodes
+                    val cap = progressTotal
                     val prev = e.currentEp - 1
                     val now = System.currentTimeMillis()
                     // If the user undoes an auto-complete (we're at cap AND
@@ -885,7 +885,7 @@ private fun TrackingCard(
             },
             onPlus = {
                 scope.launch {
-                    val cap = e.episodes
+                    val cap = progressTotal
                     val next = e.currentEp + 1
                     val now = System.currentTimeMillis()
                     if (cap != null && next >= cap) {
@@ -1367,6 +1367,8 @@ internal fun buildFallbackDetails(e: AnimeEntry): MediaDetails {
         season = null,
         year = e.year,
         episodes = e.episodes,
+        chapters = e.chapters,
+        volumes = e.volumes,
         duration = null,
         averageScore = e.averageScore,
         genres = e.genres.split(",").map { it.trim() }.filter { it.isNotBlank() },
@@ -1392,6 +1394,8 @@ internal fun buildEntryFromDetails(d: MediaDetails): AnimeEntry {
         coverColor   = d.coverColor,
         format       = d.format,
         episodes     = d.episodes,
+        chapters     = d.chapters,
+        volumes      = d.volumes,
         averageScore = d.averageScore,
         year         = d.year,
         synopsis     = d.synopsis,
