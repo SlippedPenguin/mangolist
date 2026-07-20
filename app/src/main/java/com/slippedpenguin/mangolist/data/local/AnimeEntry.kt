@@ -66,19 +66,41 @@ data class AnimeEntry(
     val syncedAt: Long?,
 ) {
     /**
-     * Returns a copy of this entry with local-only tierlist data preserved
-     * from [existing]. Used when overwriting an entry with synced data so
-     * the user's tier/elo rankings are not lost.
+     * Merges an incoming synced entry with an existing local row.
+     *
+     * Local-only tierlist data (`tier`, `elo`) is always preserved. If the
+     * local row has been edited more recently than the server row
+     * (`existing.updatedAt > this.updatedAt`), the user's tracking fields
+     * (`status`, `currentEp`, `notes`, `personalScore`, `favourite`) and the
+     * local `updatedAt`/`syncedAt` are kept. Otherwise the server values win.
      *
      * v1.2: also preserves `mediaType` — a manga entry upserted with ANIME
      * defaults is corrected to the incoming mediaType on the same row, but
      * `tier`/`elo` always come from the existing local row.
      */
-    fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry = copy(
-        tier = existing?.tier ?: tier,
-        elo = existing?.elo ?: elo,
-        // Always trust the server/source mediaType; do not preserve a stale
-        // local ANIME default when the incoming row is actually MANGA.
-        mediaType = mediaType,
-    )
+    fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry {
+        if (existing == null) return this
+        val localIsNewer = existing.updatedAt > this.updatedAt
+        return if (localIsNewer) {
+            // Keep the user's local edits but refresh server IDs and keep
+            // immutable metadata (title, cover, etc.) from the server payload.
+            this.copy(
+                status = existing.status,
+                currentEp = existing.currentEp,
+                notes = existing.notes,
+                personalScore = existing.personalScore,
+                favourite = existing.favourite,
+                updatedAt = existing.updatedAt,
+                syncedAt = existing.syncedAt ?: this.syncedAt,
+                tier = existing.tier ?: this.tier,
+                elo = existing.elo ?: this.elo,
+                listEntryId = this.listEntryId ?: existing.listEntryId,
+            )
+        } else {
+            this.copy(
+                tier = existing.tier ?: this.tier,
+                elo = existing.elo ?: this.elo,
+            )
+        }
+    }
 }
