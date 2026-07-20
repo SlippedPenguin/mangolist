@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -79,7 +80,7 @@ fun AnimeCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 5.dp)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick,
@@ -87,34 +88,35 @@ fun AnimeCard(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
         ),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(10.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Poster — falls back to a tier-tinted block if the URL is missing or fails to load.
             Box(
                 modifier = Modifier
-                    .size(width = 56.dp, height = 80.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(tierColor(entry.tier).copy(alpha = 0.3f)),
+                    .size(width = 64.dp, height = 92.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tierColor(entry.tier).copy(alpha = 0.25f)),
                 contentAlignment = Alignment.Center,
             ) {
                 AsyncImage(
                     model = entry.cover,
                     contentDescription = entry.title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 12.dp),
+                    .padding(start = 14.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -123,7 +125,6 @@ fun AnimeCard(
                     Text(
                         text = entry.title,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false),
@@ -140,12 +141,12 @@ fun AnimeCard(
                         Icon(
                             imageVector = Icons.Outlined.CloudUpload,
                             contentDescription = "Local edit pending sync",
-                            tint = Accent.copy(alpha = 0.75f),
+                            tint = Accent.copy(alpha = 0.85f),
                             modifier = Modifier.size(16.dp),
                         )
                     }
                 }
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(6.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -154,7 +155,7 @@ fun AnimeCard(
                     entryProgressText(entry)
                 }
                 if (showRelativeTimestamp) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = "Edited ${relativeTimeText(entry.updatedAt)}",
                         style = MaterialTheme.typography.labelSmall,

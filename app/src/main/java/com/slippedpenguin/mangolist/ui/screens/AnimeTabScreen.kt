@@ -19,7 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberSaveable
+
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,7 +53,7 @@ fun AnimeTabScreen(navController: NavController) {
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId by app.tokenStore.userId.collectAsState(initial = null)
 
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(0) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     val tabs = listOf("Watchlist", "Explore", "Airing")

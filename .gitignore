@@ -28,3 +28,5 @@ captures/
 
 # OS junk
 Thumbs.db
+gradlew
+gradle/wrapper/gradle-wrapper.jar
