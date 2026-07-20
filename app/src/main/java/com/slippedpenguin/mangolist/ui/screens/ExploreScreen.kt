@@ -233,13 +233,16 @@ fun ExploreScreen(navController: NavController, forcedMediaType: String? = null)
             onValueChange = { query = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             placeholder = { Text(if (mediaType == "MANGA") "Search AniList manga…" else "Search AniList…") },
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = TextFieldDefaults.colors(
-                unfocusedContainerColor = TierUnranked.copy(alpha = 0.25f),
+                unfocusedContainerColor = TierUnranked.copy(alpha = 0.22f),
+                focusedContainerColor = TierUnranked.copy(alpha = 0.28f),
+                unfocusedIndicatorColor = Border,
+                focusedIndicatorColor = Accent,
             ),
         )
 
@@ -516,9 +519,9 @@ private fun CarouselRow(
     Column(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleMedium,
             color = Accent,
-            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         )
         if (items.isEmpty()) {
             Text(

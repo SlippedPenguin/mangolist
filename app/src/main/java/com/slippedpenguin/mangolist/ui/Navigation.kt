@@ -11,9 +11,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -78,6 +80,10 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             if (isOnBottomNav && currentTitle != null) {
                 TopAppBar(
                     title = { Text(text = currentTitle) },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    ),
                 )
             }
         },
@@ -85,6 +91,7 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             if (isOnBottomNav) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
                 ) {
                     bottomDestinations.forEach { dest ->
                         val selected = currentRoute == dest.route
@@ -101,6 +108,14 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
                             },
                             icon = { Icon(dest.icon, contentDescription = dest.label) },
                             label = { Text(dest.label) },
+                            alwaysShowLabel = true,
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
                         )
                     }
                 }

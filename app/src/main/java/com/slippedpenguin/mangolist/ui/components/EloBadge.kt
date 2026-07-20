@@ -35,9 +35,9 @@ fun EloBadge(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(tierColor(tier).copy(alpha = 0.22f))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .clip(RoundedCornerShape(10.dp))
+            .background(tierColor(tier).copy(alpha = 0.18f))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -45,12 +45,11 @@ fun EloBadge(
                 text = tier ?: "—",
                 style = MaterialTheme.typography.labelMedium,
                 color = tierColor(tier),
-                fontWeight = FontWeight.ExtraBold,
             )
             Text(
                 text = rankText ?: "—",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
             )
         }
     }
