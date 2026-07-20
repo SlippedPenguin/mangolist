@@ -3,27 +3,25 @@ package com.slippedpenguin.mangolist.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /*
- * MangoList design tokens — v2.0 polish pass.
- * Keeps the dark cinematic base but raises contrast, adds subtle
- * surface tints, and introduces a cohesive accent family.
+ * Direct port of CSS :root variables from `anime-tracker/index.html`.
+ * Names chosen to mirror the source so a design change in the HTML
+ * prototype can be ported over with a search-and-replace.
  */
 
-val BgDeep        = Color(0xFF0B0B14)
-val BgCard        = Color(0xFF13131F)
-val BgCardHover   = Color(0xFF1A1A2B)
-val BgInput       = Color(0xFF15151F)
-val BgElevated    = Color(0xFF1B1B29)
+val BgDeep        = Color(0xFF0a0a14)
+val BgCard        = Color(0xFF14141f)
+val BgCardHover   = Color(0xFF1c1c2e)
+val BgInput       = Color(0xFF15151f)
 
-val Border        = Color(0xFF2A2A40)
-val BorderStrong  = Color(0xFF3A3A55)
+val Border        = Color(0xFF25253a)
+val BorderStrong  = Color(0xFF353550)
 
-val TextPrimary   = Color(0xFFF0F0F7)
-val TextSecondary = Color(0xFF9CA0B0)
-val TextMuted     = Color(0xFF64667A)
+val TextPrimary   = Color(0xFFe8e8f0)
+val TextSecondary = Color(0xFF8a8aa3)
+val TextMuted     = Color(0xFF5a5a73)
 
-val Accent        = Color(0xFFFF4D7A)
-val AccentHover   = Color(0xFFFF6B8F)
-val AccentSoft    = Color(0xFFFF4D7A)
+val Accent        = Color(0xFFff3366)
+val AccentHover   = Color(0xFFff4577)
 
 // Tier rainbow — used for badges, rows, vs-mode picks.
 val TierS         = Color(0xFFff4d6d)

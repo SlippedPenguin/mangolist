@@ -417,14 +417,13 @@ private fun AiringCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp)
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .then(
                 if (onClick != null) Modifier.clickable { onClick() }
                 else Modifier
             ),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
     ) {
         Row(
             modifier = Modifier

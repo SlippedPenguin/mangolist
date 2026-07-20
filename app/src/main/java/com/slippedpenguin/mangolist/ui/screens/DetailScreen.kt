@@ -787,7 +787,7 @@ private fun TrackingCard(
 ) {
     Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)) {
         SectionHeader("Tracking")
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
         val e = entry
         if (e == null) {
             Text(
@@ -964,8 +964,7 @@ private fun EpisodeRow(
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        shape = RoundedCornerShape(12.dp),
     ) {
         Row(
             modifier = Modifier

@@ -222,9 +222,8 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         // Core stats card
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -260,9 +259,8 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         if (viewer != null || viewerLoading) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -580,9 +578,8 @@ private fun StatRow(label: String, value: String, hint: String? = null) {
 private fun BreakdownCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(

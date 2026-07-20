@@ -42,14 +42,14 @@ fun OfflineBanner() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Accent.copy(alpha = 0.90f))
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .background(Accent.copy(alpha = 0.85f))
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = "No internet connection",
                 color = MaterialTheme.colorScheme.onPrimary,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 textAlign = TextAlign.Center,
             )
         }

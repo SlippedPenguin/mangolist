@@ -20,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -63,14 +62,13 @@ fun AnimePosterCard(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .height(200.dp)
+                .clip(RoundedCornerShape(10.dp))
                 .clickable { onClick() },
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(10.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface,
             ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Tier-tinted fallback if the cover URL is missing or the
@@ -81,18 +79,7 @@ fun AnimePosterCard(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(tierColor(entry.tier).copy(alpha = 0.25f)),
-                )
-                // Bottom gradient so text badges remain legible over busy covers.
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0.6f to Color.Transparent,
-                                1f to Color.Black.copy(alpha = 0.55f),
-                            )
-                        ),
+                        .background(tierColor(entry.tier).copy(alpha = 0.3f)),
                 )
                 if (entry.averageScore != null && entry.averageScore > 0) {
                     // AniList's averageScore is 0-100; render as a small badge
@@ -101,10 +88,10 @@ fun AnimePosterCard(
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.Black.copy(alpha = 0.70f))
-                            .padding(horizontal = 7.dp, vertical = 3.dp),
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
                     ) {
                         Text(
                             text = "${entry.averageScore}",
@@ -117,11 +104,12 @@ fun AnimePosterCard(
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
         Text(
             text = entry.title,
             style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )

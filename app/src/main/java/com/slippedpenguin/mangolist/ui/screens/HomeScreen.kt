@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -83,7 +84,7 @@ fun HomeScreen(navController: NavController) {
                 )
                 Text(
                     text = "Welcome to MangoList",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     textAlign = TextAlign.Center,
                 )
@@ -108,9 +109,9 @@ fun HomeScreen(navController: NavController) {
                 item {
                     Text(
                         text = "In Progress",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = Accent,
-                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 8.dp),
+                        modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
                     )
                 }
                 items(inProgress, key = { "home_ip_${it.anilistId}" }) { entry ->
@@ -128,9 +129,9 @@ fun HomeScreen(navController: NavController) {
                 item {
                     Text(
                         text = "Recent",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = Accent,
-                        modifier = Modifier.padding(start = 20.dp, top = 20.dp, bottom = 8.dp),
+                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
                     )
                 }
                 items(recent, key = { "home_rc_${it.anilistId}" }) { entry ->
@@ -151,15 +152,15 @@ fun HomeScreen(navController: NavController) {
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     onClick = { navController.navigate("tiers") },
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    shape = RoundedCornerShape(12.dp),
                 ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Tier Rankings",
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(Modifier.height(6.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
                             text = if (hasTiers)
                                 "View your S–D tier rankings. Long-press any card to assign a tier."

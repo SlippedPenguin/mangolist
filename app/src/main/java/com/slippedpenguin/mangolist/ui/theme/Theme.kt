@@ -13,7 +13,7 @@ import androidx.compose.runtime.Composable
 private val MangoDarkColors = darkColorScheme(
     primary             = Accent,
     onPrimary           = TextPrimary,
-    primaryContainer    = Accent.copy(alpha = 0.15f),
+    primaryContainer    = Accent.copy(alpha = 0.18f),
     onPrimaryContainer  = Accent,
     secondary           = TierC,
     onSecondary         = TextPrimary,
@@ -21,11 +21,11 @@ private val MangoDarkColors = darkColorScheme(
     onBackground        = TextPrimary,
     surface             = BgCard,
     onSurface           = TextPrimary,
-    surfaceVariant      = BgElevated,
+    surfaceVariant      = BgInput,
     onSurfaceVariant    = TextSecondary,
     outline             = Border,
-    outlineVariant      = BorderStrong,
-    error               = StatusDropped,
+    outlineVariant      = Border,
+    error               = Accent,
     onError             = TextPrimary,
 )
 
