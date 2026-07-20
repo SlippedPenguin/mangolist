@@ -84,7 +84,10 @@ fun AnimeTabScreen(navController: NavController) {
             onRefresh = {
                 val tok = accessToken
                 val id = userId
-                if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
+                if (tok.isNullOrBlank() || id.isNullOrBlank()) {
+                    isRefreshing = false
+                    return@PullToRefreshBox
+                }
                 scope.launch {
                     isRefreshing = true
                     try {

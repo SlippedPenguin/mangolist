@@ -746,6 +746,7 @@ class AniListClient(
                         coverLarge   = n.coverImage?.large,
                         relationType = edge.relationType?.rawValue,
                         format       = n.format?.rawValue,
+                        mediaType    = n.type?.rawValue ?: "ANIME",
                     )
                 }
 
@@ -1000,10 +1001,11 @@ class AniListClient(
         if (mediaIds.isEmpty()) return emptyList()
         return withNetwork(emptyList()) {
             try {
-                rateLimitGate()
                 withContext(Dispatchers.IO) {
                     val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
-                    val result = mediaIds.chunked(50).flatMap { batch ->
+                    val result = mutableListOf<AiringSlot>()
+                    for (batch in mediaIds.chunked(50)) {
+                        rateLimitGate()
                         val payload = buildJsonObject {
                             put(
                                 "query",
@@ -1029,15 +1031,15 @@ class AniListClient(
                                 "AniListClient",
                                 "getNextAiringFor HTTP ${conn.responseCode} on batch of ${batch.size}: ${errorBody.take(400)}",
                             )
-                            return@flatMap emptyList<AiringSlot>()
+                            continue
                         }
                         val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                         val root = json.parseToJsonElement(responseBody).jsonObject
                         val mediaArray = root["data"]?.jsonObject
                             ?.get("Page")?.jsonObject
-                            ?.get("media")?.jsonArray ?: return@flatMap emptyList()
+                            ?.get("media")?.jsonArray ?: continue
 
-                        mediaArray.mapNotNull { el ->
+                        result.addAll(mediaArray.mapNotNull { el ->
                             val m = el.jsonObject
                             val next = m["nextAiringEpisode"] as? JsonObject ?: return@mapNotNull null
                             val title = m["title"] as? JsonObject
@@ -1058,7 +1060,7 @@ class AniListClient(
                                 anilistStatus = status,
                                 bannerImage = banner,
                             )
-                        }
+                        })
                     }
                     result
                 }  // withContext
@@ -1179,15 +1181,14 @@ data class CharacterCard(
     val name: String?,
     val role: String?,
     val imageLarge: String?,
-)
-
-data class RelationCard(
-    val id: Int,
-    val title: String?,
-    val coverLarge: String?,
-    val relationType: String?,
-    val format: String?,
-)
+)    data class RelationCard(
+        val id: Int,
+        val title: String?,
+        val coverLarge: String?,
+        val relationType: String?,
+        val format: String?,
+        val mediaType: String = "ANIME",
+    )
 
 /*
  * Lightweight view of the AniList viewer that we cache in TokenStore.

@@ -256,7 +256,9 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
                 item {
                     RelationsRow(
                         relations = relations,
-                        onNavigate = { relationId -> navController.navigate("detail/$resolvedMediaType/$relationId") },
+                        onNavigate = { relationId, relationType ->
+                            navController.navigate("detail/${relationType}/$relationId")
+                        },
                     )
                 }
             }
@@ -709,7 +711,10 @@ private fun CharactersRow(characters: List<CharacterCard>) {
 }
 
 @Composable
-private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Unit = {}) {
+private fun RelationsRow(
+    relations: List<RelationCard>,
+    onNavigate: (Int, String) -> Unit = { _, _ -> },
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -718,7 +723,7 @@ private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Uni
         items(relations) { r ->
             Card(
                 modifier = Modifier.width(140.dp),
-                onClick = { onNavigate(r.id) },
+                onClick = { onNavigate(r.id, r.mediaType) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp),
             ) {

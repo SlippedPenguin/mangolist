@@ -415,13 +415,17 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                             async { app.anilistClient.syncUserList(token, id.toInt(), "MANGA") },
                         )
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                        val animeErr = animeResult.error
+                        val mangaErr = mangaResult.error
                         if (combined.isNotEmpty()) {
                             val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
                             val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
                             app.database.animeDao().upsertAll(merged)
                             Toast.makeText(context, "Synced ${merged.size} entries", Toast.LENGTH_SHORT).show()
+                        } else if (animeErr == null && mangaErr == null) {
+                            Toast.makeText(context, "Already up to date", Toast.LENGTH_SHORT).show()
                         } else {
-                            val raw = animeResult.error ?: mangaResult.error ?: "Sync failed"
+                            val raw = animeErr ?: mangaErr ?: "Sync failed"
                             val msg = if (raw.length > 150) raw.take(150) + "…" else raw
                             Toast.makeText(context, "Sync failed: $msg", Toast.LENGTH_LONG).show()
                         }

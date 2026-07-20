@@ -37,6 +37,23 @@ interface AnimeDao {
     @Update
     suspend fun update(entry: AnimeEntry)
 
+    /**
+     * Marks an entry as synced only if it has not been edited since
+     * [expectedUpdatedAt]. Returns the number of rows affected (0 means a
+     * concurrent edit happened and we should not overwrite it).
+     */
+    @Query(
+        "UPDATE anime_entries " +
+        "SET listEntryId = :listEntryId, syncedAt = :syncedAt " +
+        "WHERE anilistId = :anilistId AND updatedAt = :expectedUpdatedAt",
+    )
+    suspend fun markSyncedIfUnchanged(
+        anilistId: Int,
+        listEntryId: Int?,
+        syncedAt: Long,
+        expectedUpdatedAt: Long,
+    ): Int
+
     @Query("DELETE FROM anime_entries WHERE anilistId = :id")
     suspend fun delete(id: Int)
 

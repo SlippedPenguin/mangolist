@@ -29,7 +29,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.navigation.navArgument
 import com.slippedpenguin.mangolist.ui.screens.AnimeTabScreen
 import com.slippedpenguin.mangolist.ui.screens.DetailScreen
 import com.slippedpenguin.mangolist.ui.screens.HomeScreen

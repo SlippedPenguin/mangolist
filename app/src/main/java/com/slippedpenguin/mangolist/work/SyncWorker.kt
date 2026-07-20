@@ -43,14 +43,21 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 val result = app.anilistClient.saveEntry(token, entry)
                 if (result != null) {
                     val serverMillis = result.updatedAtSeconds?.let { it * 1000L } ?: System.currentTimeMillis()
-                    dao.update(
-                        entry.copy(
-                            listEntryId = result.id,
-                            notes = result.notes ?: entry.notes,
-                            syncedAt = serverMillis,
-                            updatedAt = serverMillis,
-                        )
+                    // Only mark the row as synced if it hasn't been edited
+                    // while the network call was in flight. Affected-rows == 0
+                    // means a concurrent edit happened; leave it pending.
+                    val affected = dao.markSyncedIfUnchanged(
+                        anilistId = entry.anilistId,
+                        listEntryId = result.id,
+                        syncedAt = serverMillis,
+                        expectedUpdatedAt = entry.updatedAt,
                     )
+                    if (affected == 0) {
+                        android.util.Log.w(
+                            "SyncWorker",
+                            "Concurrent edit detected for anilistId=${entry.anilistId}; leaving pending.",
+                        )
+                    }
                 } else {
                     anyFailed = true
                 }
