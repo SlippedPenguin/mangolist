@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
+import com.slippedpenguin.mangolist.ui.components.LibraryFilterBar
+import com.slippedpenguin.mangolist.ui.components.LibraryHeader
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -46,14 +48,17 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimeTabScreen(navController: NavController) {
+fun AnimeTabScreen(
+    navController: NavController,
+    initialTab: Int = 0,
+) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId by app.tokenStore.userId.collectAsState(initial = null)
 
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
+    var selectedTab by rememberSaveable { mutableStateOf(initialTab.coerceIn(0, 2)) }
     var isRefreshing by remember { mutableStateOf(false) }
 
     val tabs = listOf("Watchlist", "Explore", "Airing")
@@ -79,76 +84,122 @@ fun AnimeTabScreen(navController: NavController) {
             }
         }
 
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                val tok = accessToken
-                val id = userId
-                if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
-                scope.launch {
-                    isRefreshing = true
-                    try {
-                        val result = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
-                        if (result.entries != null && result.entries.isNotEmpty()) {
-                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
-                            app.database.animeDao().upsertAll(merged)
+        when (selectedTab) {
+            0 -> PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    val tok = accessToken
+                    val id = userId
+                    if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
+                    scope.launch {
+                        isRefreshing = true
+                        try {
+                            val result = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
+                            if (result.entries != null && result.entries.isNotEmpty()) {
+                                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                                val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                                app.database.animeDao().upsertAll(merged)
+                            }
+                        } finally {
+                            isRefreshing = false
                         }
-                    } finally {
-                        isRefreshing = false
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            when (selectedTab) {
-                0 -> AnimeWatchlistContent(navController)
-                1 -> AnimeExploreContent(navController)
-                2 -> AiringScreen(
-                    onNavigateDetail = { id -> navController.navigate("detail/ANIME/$id") },
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                AnimeWatchlistContent(
+                    navController = navController,
+                    onExplore = { selectedTab = 1 },
                 )
             }
+            1 -> AnimeExploreContent(navController)
+            2 -> AiringScreen(
+                onNavigateDetail = { id -> navController.navigate("detail/ANIME/$id") },
+            )
         }
     }
 }
+
+private const val FAVORITES_FILTER = "__favorites__"
 
 /*
  * Lightweight wrapper that shows the anime-only watchlist.
  */
 @Composable
-private fun AnimeWatchlistContent(navController: NavController) {
+private fun AnimeWatchlistContent(
+    navController: NavController,
+    onExplore: () -> Unit,
+) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val entries by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
+    var selectedStatus by rememberSaveable { mutableStateOf<String?>(null) }
 
-    val filtered = remember(entries) { entries.filter { it.mediaType == "ANIME" } }
-
-    if (filtered.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = if (entries.isEmpty()) "No anime in your list" else "No anime in this view",
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = "Pull to sync from AniList or switch to the Explore tab to find anime.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+    val animeEntries = remember(entries) { entries.filter { it.mediaType == "ANIME" } }
+    val counts = remember(animeEntries) {
+        buildMap<String?, Int> {
+            put(null, animeEntries.size)
+            put(FAVORITES_FILTER, animeEntries.count { it.favourite })
+            animeEntries.groupingBy { it.status }.eachCount().forEach { (status, count) -> put(status, count) }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp),
-        ) {
+    }
+    val filtered = remember(animeEntries, selectedStatus) {
+        when (selectedStatus) {
+            null -> animeEntries
+            FAVORITES_FILTER -> animeEntries.filter { it.favourite }
+            else -> animeEntries.filter { it.status == selectedStatus }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+    ) {
+        item {
+            LibraryHeader(
+                title = "Your anime",
+                subtitle = "Keep your next watch in reach.",
+                total = animeEntries.size,
+                active = animeEntries.count { it.status in listOf("watching", "paused", "repeating") },
+                planned = animeEntries.count { it.status == "plan" },
+                onExplore = onExplore,
+            )
+        }
+        item {
+            LibraryFilterBar(
+                selectedStatus = selectedStatus,
+                counts = counts,
+                onSelect = { selectedStatus = it },
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        if (filtered.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (animeEntries.isEmpty()) "Your anime library is empty" else "Nothing in this status",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = if (animeEntries.isEmpty()) "Sync AniList or open Explore to find your next series." else "Try another filter or update a title's status.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        } else {
             items(filtered, key = { it.anilistId }) { entry ->
                 AnimeCard(
                     entry = entry,

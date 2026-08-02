@@ -26,7 +26,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.navigation.navArgument
 import com.slippedpenguin.mangolist.ui.screens.AnimeTabScreen
 import com.slippedpenguin.mangolist.ui.screens.DetailScreen
 import com.slippedpenguin.mangolist.ui.screens.HomeScreen
@@ -70,8 +69,12 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
 
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
-    val isOnBottomNav = bottomDestinations.any { it.route == currentRoute }
-    val currentTitle = bottomDestinations.firstOrNull { it.route == currentRoute }?.label
+    val isOnBottomNav = bottomDestinations.any { dest ->
+        currentRoute == dest.route || currentRoute?.startsWith("${dest.route}?") == true
+    }
+    val currentTitle = bottomDestinations.firstOrNull { dest ->
+        currentRoute == dest.route || currentRoute?.startsWith("${dest.route}?") == true
+    }?.label
 
     Scaffold(
         topBar = {
@@ -87,7 +90,7 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
                     containerColor = MaterialTheme.colorScheme.surface,
                 ) {
                     bottomDestinations.forEach { dest ->
-                        val selected = currentRoute == dest.route
+                        val selected = currentRoute == dest.route || currentRoute?.startsWith("${dest.route}?") == true
                         NavigationBarItem(
                             selected = selected,
                             onClick = {
@@ -113,7 +116,17 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             modifier = Modifier.padding(padding),
         ) {
             composable(BottomDest.Home.route)    { HomeScreen(navController) }
-            composable(BottomDest.Anime.route)   { AnimeTabScreen(navController) }
+            composable(
+                route = "${BottomDest.Anime.route}?tab={tab}",
+                arguments = listOf(
+                    navArgument("tab") { type = NavType.IntType; defaultValue = 0 },
+                ),
+            ) { entry ->
+                AnimeTabScreen(
+                    navController = navController,
+                    initialTab = entry.arguments?.getInt("tab") ?: 0,
+                )
+            }
             composable(BottomDest.Manga.route)   { MangaTabScreen(navController) }
             composable(BottomDest.Profile.route) { ProfileScreen(navController) }
             composable("tiers")                  { TiersScreen(navController) }

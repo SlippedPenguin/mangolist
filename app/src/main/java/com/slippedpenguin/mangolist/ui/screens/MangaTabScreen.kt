@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
+import com.slippedpenguin.mangolist.ui.components.LibraryFilterBar
+import com.slippedpenguin.mangolist.ui.components.LibraryHeader
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
@@ -78,73 +80,119 @@ fun MangaTabScreen(navController: NavController) {
             }
         }
 
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                val tok = accessToken
-                val id = userId
-                if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
-                scope.launch {
-                    isRefreshing = true
-                    try {
-                        val result = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
-                        if (result.entries != null && result.entries.isNotEmpty()) {
-                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
-                            app.database.animeDao().upsertAll(merged)
+        when (selectedTab) {
+            0 -> PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    val tok = accessToken
+                    val id = userId
+                    if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
+                    scope.launch {
+                        isRefreshing = true
+                        try {
+                            val result = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                            if (result.entries != null && result.entries.isNotEmpty()) {
+                                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
+                                val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+                                app.database.animeDao().upsertAll(merged)
+                            }
+                        } finally {
+                            isRefreshing = false
                         }
-                    } finally {
-                        isRefreshing = false
                     }
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            when (selectedTab) {
-                0 -> MangaWatchlistContent(navController)
-                1 -> MangaExploreContent(navController)
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                MangaWatchlistContent(
+                    navController = navController,
+                    onExplore = { selectedTab = 1 },
+                )
             }
+            1 -> MangaExploreContent(navController)
         }
     }
 }
+
+private const val FAVORITES_FILTER = "__favorites__"
 
 /*
  * Lightweight wrapper that shows manga-only watchlist.
  */
 @Composable
-private fun MangaWatchlistContent(navController: NavController) {
+private fun MangaWatchlistContent(
+    navController: NavController,
+    onExplore: () -> Unit,
+) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val entries by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
-    val filtered = remember(entries) { entries.filter { it.mediaType == "MANGA" } }
-
-    if (filtered.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = if (entries.isEmpty()) "No manga in your list" else "No manga in this view",
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = "Pull to sync from AniList or switch to the Explore tab to find manga.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-            }
+    var selectedStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    val mangaEntries = remember(entries) { entries.filter { it.mediaType == "MANGA" } }
+    val counts = remember(mangaEntries) {
+        buildMap<String?, Int> {
+            put(null, mangaEntries.size)
+            put(FAVORITES_FILTER, mangaEntries.count { it.favourite })
+            mangaEntries.groupingBy { it.status }.eachCount().forEach { (status, count) -> put(status, count) }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 8.dp),
-        ) {
+    }
+    val filtered = remember(mangaEntries, selectedStatus) {
+        when (selectedStatus) {
+            null -> mangaEntries
+            FAVORITES_FILTER -> mangaEntries.filter { it.favourite }
+            else -> mangaEntries.filter { it.status == selectedStatus }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
+    ) {
+        item {
+            LibraryHeader(
+                title = "Your manga",
+                subtitle = "Pick up your next chapter anytime.",
+                total = mangaEntries.size,
+                active = mangaEntries.count { it.status in listOf("watching", "paused", "repeating") },
+                planned = mangaEntries.count { it.status == "plan" },
+                onExplore = onExplore,
+            )
+        }
+        item {
+            LibraryFilterBar(
+                selectedStatus = selectedStatus,
+                counts = counts,
+                onSelect = { selectedStatus = it },
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        if (filtered.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = if (mangaEntries.isEmpty()) "Your manga library is empty" else "Nothing in this status",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = if (mangaEntries.isEmpty()) "Sync AniList or open Explore to find your next series." else "Try another filter or update a title's status.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        } else {
             items(filtered, key = { it.anilistId }) { entry ->
                 AnimeCard(
                     entry = entry,

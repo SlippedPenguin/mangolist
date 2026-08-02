@@ -1,22 +1,30 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -24,7 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,147 +41,231 @@ import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
+import com.slippedpenguin.mangolist.ui.theme.BgCardHover
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import com.slippedpenguin.mangolist.ui.theme.tierColor
 
-/*
- * Home — v1.4 Anihyou-style landing tab.
- *
- *   - **Currently watching/reading** — the user's active (watching / paused /
- *     repeating) entries sorted by most recently updated. Shows up to 12
- *     items so the home feed stays tight.
- *   - **Recent activity** — last 6 entries that were edited (sorted by
- *     updatedAt DESC) with a progress + status line.
- *   - **Tiers link** — a prominent card that navigates to the full TiersScreen
- *     (still available as a friend-routed composable, not a bottom tab).
- *
- * Tapping any card opens the detail screen. The tier link fires
- * `navController.navigate("tiers")`.
+/**
+ * Home dashboard: a quick read of the library, active titles, recent changes,
+ * and a clear route into tier ranking. It stays useful both before and after
+ * the first AniList sync.
  */
 @Composable
 fun HomeScreen(navController: NavController) {
-    val context = LocalContext.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
-    val dao = remember { app.database.animeDao() }
-    val entries by dao.observeAll().collectAsState(initial = emptyList())
+    val entries by app.database.animeDao().observeAll().collectAsState(initial = emptyList())
 
     val inProgress = remember(entries) {
         entries
             .filter { it.status in listOf("watching", "paused", "repeating") }
             .sortedByDescending { it.updatedAt }
-            .take(12)
+            .take(8)
     }
-    val recent = remember(entries) {
-        entries.sortedByDescending { it.updatedAt }.take(6)
-    }
-    val hasTiers = remember(entries) { entries.any { it.tier != null } }
+    val recent = remember(entries) { entries.sortedByDescending { it.updatedAt }.take(5) }
+    val animeCount = remember(entries) { entries.count { it.mediaType == "ANIME" } }
+    val mangaCount = remember(entries) { entries.count { it.mediaType == "MANGA" } }
+    val rankedCount = remember(entries) { entries.count { it.tier != null } }
 
-    if (entries.isEmpty()) {
-        // Use Imported Icons.Outlined.Visibility from material-icons-core
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    imageVector = Icons.Outlined.Visibility,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 12.dp),
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        item { OfflineBanner() }
+        item {
+            if (entries.isEmpty()) {
+                WelcomeCard(
+                    onProfile = { navController.navigate("profile") },
+                    onExplore = { navController.navigate("anime?tab=1") },
                 )
-                Text(
-                    text = "Welcome to MangoList",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = "Sign in on the Profile tab and sync to pull your AniList data. Your watchlist and tiers will appear here.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 6.dp),
+            } else {
+                DashboardHeader(
+                    total = entries.size,
+                    inProgress = inProgress.size,
+                    ranked = rankedCount,
+                    animeCount = animeCount,
+                    mangaCount = mangaCount,
                 )
             }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+
+        if (inProgress.isNotEmpty()) {
+            item { SectionHeading("Pick up where you left off", "Active titles") }
+            items(inProgress, key = { "home_progress_${it.mediaType}_${it.anilistId}" }) { entry ->
+                AnimeCard(
+                    entry = entry,
+                    onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
+                    showSyncPending = true,
+                    showFavorite = true,
+                )
+            }
+        }
+
+        if (recent.isNotEmpty()) {
+            item { SectionHeading("Recent activity", "Your latest updates") }
+            items(recent, key = { "home_recent_${it.mediaType}_${it.anilistId}" }) { entry ->
+                AnimeCard(
+                    entry = entry,
+                    onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
+                    showRelativeTimestamp = true,
+                    showTier = false,
+                )
+            }
+        }
+
+        item {
+            TierShortcut(
+                rankedCount = rankedCount,
+                onClick = { navController.navigate("tiers") },
+            )
+        }
+    }
+}
+
+@Composable
+private fun WelcomeCard(onProfile: () -> Unit, onExplore: () -> Unit) {
+    Card(
+        modifier = Modifier.padding(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            item { OfflineBanner() }
-
-            // --- Currently watching/reading ---
-            if (inProgress.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "In Progress",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Accent,
-                        modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
-                    )
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Accent.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Accent)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = "Your anime corner, organized.",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Connect AniList to bring your watchlist into MangoList, then track progress and build your tiers.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = onProfile) {
+                    Icon(Icons.Outlined.Person, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Connect")
                 }
-                items(inProgress, key = { "home_ip_${it.anilistId}" }) { entry ->
-                    AnimeCard(
-                        entry = entry,
-                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                        showSyncPending = true,
-                        showFavorite = true,
-                    )
+                OutlinedButton(onClick = onExplore) {
+                    Icon(Icons.Outlined.Explore, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Explore")
                 }
             }
+        }
+    }
+}
 
-            // --- Recent activity ---
-            if (recent.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Recent",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Accent,
-                        modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-                    )
-                }
-                items(recent, key = { "home_rc_${it.anilistId}" }) { entry ->
-                    AnimeCard(
-                        entry = entry,
-                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                        showRelativeTimestamp = true,
-                        showTier = false,
-                    )
-                }
+@Composable
+private fun DashboardHeader(
+    total: Int,
+    inProgress: Int,
+    ranked: Int,
+    animeCount: Int,
+    mangaCount: Int,
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(
+            text = "Your library",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = "$animeCount anime · $mangaCount manga",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(top = 3.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DashboardMetric(total.toString(), "Titles", Modifier.weight(1f))
+            DashboardMetric(inProgress.toString(), "In progress", Modifier.weight(1f))
+            DashboardMetric(ranked.toString(), "Ranked", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun DashboardMetric(value: String, label: String, modifier: Modifier) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(14.dp),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge, color = Accent, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun SectionHeading(kicker: String, title: String) {
+    Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 4.dp)) {
+        Text(
+            text = kicker.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = Accent,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun TierShortcut(rankedCount: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+        onClick = onClick,
+        colors = CardDefaults.cardColors(containerColor = BgCardHover),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tierColor("S").copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Tune, contentDescription = null, tint = tierColor("S"))
             }
-
-            // --- Tiers shortcut ---
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    onClick = { navController.navigate("tiers") },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Tier Rankings",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = if (hasTiers)
-                                "View your S–D tier rankings. Long-press any card to assign a tier."
-                            else
-                                "No entries ranked yet. Tap to start building your tier list.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
-                    }
-                }
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("Build your tier list", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    if (rankedCount == 0) "Rank your favorites from S to D."
+                    else "$rankedCount titles ranked so far.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
             }
-
-            item { Spacer(Modifier.height(24.dp)) }
+            Text("Open", color = Accent, style = MaterialTheme.typography.labelLarge)
         }
     }
 }
