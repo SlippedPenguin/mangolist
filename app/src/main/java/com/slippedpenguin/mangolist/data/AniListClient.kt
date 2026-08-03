@@ -622,6 +622,7 @@ class AniListClient(
                 SyncResult(null, e.message ?: "Unknown sync error (${e.javaClass.simpleName})")
             }
         }
+        }
     }
 
     private fun parseMediaListEntry(entry: JsonObject, mediaType: String, nowMillis: Long): AnimeEntry? {
