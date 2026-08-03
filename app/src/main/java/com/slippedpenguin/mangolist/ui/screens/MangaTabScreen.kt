@@ -145,15 +145,15 @@ private fun MangaWatchlistContent(
         }
     }
 
-    // v1.5.1: the filter island is pinned ABOVE the list so switching
-    // categories never requires scrolling back to the top. The header card
-    // still scrolls away, but the All/Watching/Completed chips stay put.
+    // v1.5.3: collapsed behind a corner button like the anime tab; manga
+    // chips read Reading/Rereading instead of Watching/Repeating.
     Column(modifier = Modifier.fillMaxSize()) {
         LibraryFilterBar(
             selectedStatus = selectedStatus,
             counts = counts,
             onSelect = { selectedStatus = it },
-            modifier = Modifier.padding(vertical = 6.dp),
+            mediaType = "MANGA",
+            modifier = Modifier.padding(vertical = 2.dp),
         )
         LazyColumn(
             modifier = Modifier.weight(1f),

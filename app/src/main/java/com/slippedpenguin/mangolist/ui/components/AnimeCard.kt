@@ -153,7 +153,7 @@ fun AnimeCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    StatusPill(status = entry.status)
+                    StatusPill(status = entry.status, mediaType = entry.mediaType)
                     entryProgressText(entry)
                 }
                 if (showRelativeTimestamp) {

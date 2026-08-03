@@ -8,30 +8,34 @@ import androidx.compose.ui.graphics.Color
  * prototype can be ported over with a search-and-replace.
  */
 
-val BgDeep        = Color(0xFF0a0a14)
-val BgCard        = Color(0xFF14141f)
-val BgCardHover   = Color(0xFF1c1c2e)
-val BgInput       = Color(0xFF15151f)
+/*
+ * v1.5.3: color tokens retuned to AniHyou's Material-You dark palette
+ * (periwinkle primary #BAC3FF on a neutral #1B1B1F base) for the polished
+ * look. Tier/status badge colors stay functional and distinct; the app-wide
+ * accent, surfaces, and text neutrals now match the reference client.
+ */
+val BgDeep        = Color(0xFF1B1B1F)  // AniHyou background / surface
+val BgCard        = Color(0xFF1B1B1F)  // AniHyou surface
+val BgCardHover   = Color(0xFF232329)
+val BgInput       = Color(0xFF2B2B31)  // surfaceVariant-ish input field
 
-// v1.5.0: Material-3 surface-container ladder. Layering these gives the
-// depth Anihyou-style dark UIs have — nav bar, cards, and sheets sit on
-// progressively lighter tones instead of one flat surface color.
-val SurfaceContainerLowest  = Color(0xFF0b0b16)
-val SurfaceContainerLow     = Color(0xFF10101c)
-val SurfaceContainer        = Color(0xFF161624)
-val SurfaceContainerHigh    = Color(0xFF1c1c2c)
-val SurfaceContainerHighest = Color(0xFF222235)
+// Material-3 surface-container ladder retuned to AniHyou's neutral ramp.
+val SurfaceContainerLowest  = Color(0xFF131318)
+val SurfaceContainerLow     = Color(0xFF1D1D22)
+val SurfaceContainer        = Color(0xFF242429)
+val SurfaceContainerHigh    = Color(0xFF2B2B31)
+val SurfaceContainerHighest = Color(0xFF32323A)
 
-val Border        = Color(0xFF25253a)
-val BorderStrong  = Color(0xFF353550)
-val BorderSubtle  = Color(0xFF1e1e30)
+val Border        = Color(0xFF46464F)  // outlineVariant
+val BorderStrong  = Color(0xFF90909A)  // outline
+val BorderSubtle  = Color(0xFF32323A)
 
-val TextPrimary   = Color(0xFFe8e8f0)
-val TextSecondary = Color(0xFF8a8aa3)
-val TextMuted     = Color(0xFF5a5a73)
+val TextPrimary   = Color(0xFFE4E1E6)  // onSurface
+val TextSecondary = Color(0xFFC7C5D0)  // onSurfaceVariant
+val TextMuted     = Color(0xFF90909A)  // outline
 
-val Accent        = Color(0xFFff3366)
-val AccentHover   = Color(0xFFff4577)
+val Accent        = Color(0xFFBAC3FF)  // AniHyou periwinkle primary
+val AccentHover   = Color(0xFFCBD2FF)
 
 // Tier rainbow — used for badges, rows, vs-mode picks.
 val TierS         = Color(0xFFff4d6d)

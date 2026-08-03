@@ -26,19 +26,24 @@ import com.slippedpenguin.mangolist.ui.theme.StatusWatching
  * surfaces today: "plan" / "watching" / "completed" / "dropped" and the
  * v0.5 pair "paused" / "repeating". Colors are stable across the app;
  * matches the JS prototype's `.status-pill` rule.
+ *
+ * v1.5.3: media-type-aware labels — manga reads "READING" / "REREADING"
+ * instead of "WATCHING" / "REPEATING". AniList stores the same status
+ * string for both, so the label is derived here at render time.
  */
 @Composable
 fun StatusPill(
     status: String,
     modifier: Modifier = Modifier,
+    mediaType: String = "ANIME",
 ) {
     val (label, color) = when (status) {
         "plan"      -> "PLAN"      to StatusPlan
-        "watching"  -> "WATCHING"  to StatusWatching
+        "watching"  -> (if (mediaType == "MANGA") "READING" else "WATCHING") to StatusWatching
         "completed" -> "COMPLETED" to StatusCompleted
         "dropped"   -> "DROPPED"   to StatusDropped
         "paused"    -> "PAUSED"    to StatusPaused
-        "repeating" -> "REPEATING" to StatusRepeating
+        "repeating" -> (if (mediaType == "MANGA") "REREADING" else "REPEATING") to StatusRepeating
         else        -> status.uppercase() to BorderStrong
     }
     Box(

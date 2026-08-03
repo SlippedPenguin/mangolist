@@ -152,15 +152,17 @@ private fun AnimeWatchlistContent(
         }
     }
 
-    // v1.5.1: the filter island is pinned ABOVE the list so switching
-    // categories never requires scrolling back to the top. The header card
-    // still scrolls away, but the All/Watching/Completed chips stay put.
+    // v1.5.3: the filter island is collapsed behind a corner button (AniHyou
+    // style) — tap to expand the All/Watching/Completed chips, tap again to
+    // collapse. The bar sits above the list so categories never require
+    // scrolling back to the top, but no longer squats permanently.
     Column(modifier = Modifier.fillMaxSize()) {
         LibraryFilterBar(
             selectedStatus = selectedStatus,
             counts = counts,
             onSelect = { selectedStatus = it },
-            modifier = Modifier.padding(vertical = 6.dp),
+            mediaType = "ANIME",
+            modifier = Modifier.padding(vertical = 2.dp),
         )
         LazyColumn(
             modifier = Modifier.weight(1f),

@@ -67,7 +67,6 @@ import com.slippedpenguin.mangolist.ui.theme.StatusPlan
 import com.slippedpenguin.mangolist.ui.theme.StatusWatching
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
-import com.slippedpenguin.mangolist.ui.theme.statusColor
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -281,22 +280,9 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             Spacer(Modifier.height(16.dp))
         }
 
-        // Status breakdown
-        if (stats.statusCounts.isNotEmpty()) {
-            BreakdownCard(title = "By status") {
-                Column {
-                    val byCount = stats.statusCounts.sortedByDescending { it.second }
-                    for ((status, count) in byCount) {
-                        BreakdownRow(
-                            label = status.uppercase(),
-                            count = count,
-                            color = statusColor(status),
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
+        // v1.5.3: the per-status breakdown is gone — the Anime/Manga
+        // watchlist filter island is the single source of status counts.
+        // Profile keeps tier / genre / format / year distribution.
 
         // Tier breakdown
         if (stats.tierCounts.isNotEmpty()) {

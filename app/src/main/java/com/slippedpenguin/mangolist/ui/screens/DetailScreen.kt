@@ -875,7 +875,7 @@ private fun TrackingCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            StatusPill(status = e.status)
+            StatusPill(status = e.status, mediaType = e.mediaType)
             Text(
                 text = "Elo ${e.elo}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -1164,7 +1164,7 @@ private fun StatusPickerDialog(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            StatusPill(status = status)
+                            StatusPill(status = status, mediaType = entry?.mediaType ?: "ANIME")
                             Spacer(Modifier.weight(1f))
                             if (isCurrent) {
                                 Text(

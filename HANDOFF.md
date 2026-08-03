@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.2](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.2)
-> **Working tree:** v1.5.2 fixes three Detail/UX issues on top of v1.5.1: (1) relations now navigate with each relation's OWN media type — tapping a Manga Adaptation from an anime's "Related" section previously opened a dead "Untitled" screen because the app fetched the manga ID with type=ANIME (AniList returns 404); also renamed "Related anime" → "Related" and added native-title fallbacks so Japanese-only titles never render as Untitled. (2) The Detail hero no longer swaps from the poster to the banner: the banner slot only ever renders the wide banner (crossfading from the cover-color backdrop), and the poster stays in its constant bottom-left card — the jarring "background photo change" is gone. (3) Tier list is one tap away: a Tune action on the Home top bar plus the tier shortcut card moved above the fold on Home.
-> **Deprecated releases:** v1.5.3–v1.5.4 are retained for history but should not be installed; the old broken v1.5.0/v1.5.1 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes).
+> **Latest documented release:** [v1.5.3](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.3)
+> **Working tree:** v1.5.3 AniHyou polish pass on top of v1.5.2: (1) status filter collapsed behind a corner button on the Anime/Manga watchlists (tap to expand the All/Watching/Completed chips, tap again to collapse) — no more permanent chip row squatting above the list. (2) Manga-aware status naming: manga reads "Reading"/"Rereading" instead of "Watching"/"Repeating" everywhere (filter chips + StatusPill). (3) Profile's duplicate "By status" breakdown removed — the watchlist filter island is the single status-count surface now. (4) Color tokens retuned to AniHyou's Material-You dark palette: periwinkle primary #BAC3FF (was pink), neutral #1B1B1F base, retuned surface ladder + borders + text neutrals for the polished reference-client look.
+> **Deprecated releases:** v1.5.4 is retained for history but should not be installed; the old broken v1.5.0–v1.5.3 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes, v1.5.3 = AniHyou polish pass).
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 
