@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity() {
                         val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
-                            app.database.animeDao().mergeRemoteEntries(combined)
+                            app.database.animeDao().mergePullResults(combined)
                         }
                         val firstErr = animeResult.error ?: mangaResult.error
                         if (firstErr != null) {
@@ -144,7 +144,7 @@ class MainActivity : ComponentActivity() {
                 val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
                 val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                 if (combined.isNotEmpty()) {
-                    app.database.animeDao().mergeRemoteEntries(combined)
+                    app.database.animeDao().mergePullResults(combined)
                 }
                 val firstErr = animeResult.error ?: mangaResult.error
                 if (firstErr != null && combined.isEmpty()) {

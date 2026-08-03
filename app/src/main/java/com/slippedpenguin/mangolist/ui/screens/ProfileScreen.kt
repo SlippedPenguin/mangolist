@@ -130,7 +130,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     )
                     val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                     if (combined.isNotEmpty()) {
-                        app.database.animeDao().mergeRemoteEntries(combined)
+                        app.database.animeDao().mergePullResults(combined)
                     }
                     val firstErr = animeResult.error ?: mangaResult.error
                     if (firstErr != null) {
@@ -412,7 +412,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         )
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
-                            app.database.animeDao().mergeRemoteEntries(combined)
+                            app.database.animeDao().mergePullResults(combined)
                             Toast.makeText(context, "Synced ${combined.size} entries", Toast.LENGTH_SHORT).show()
                         } else {
                             val raw = animeResult.error ?: mangaResult.error ?: "Sync failed"

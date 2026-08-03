@@ -127,7 +127,7 @@ fun TiersScreen(navController: NavController) {
                         val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
-                            app.database.animeDao().mergeRemoteEntries(combined)
+                            app.database.animeDao().mergePullResults(combined)
                         }
                     } finally {
                         isRefreshing = false

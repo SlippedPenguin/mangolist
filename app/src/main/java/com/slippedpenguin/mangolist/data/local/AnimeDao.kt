@@ -36,24 +36,15 @@ interface AnimeDao {
     suspend fun upsertAll(entries: List<AnimeEntry>)
 
     /**
-     * Merge a successful AniList pull without overwriting a local outbox
-     * edit. The transaction closes the read/decision/write gap so a refresh
-     * cannot race a detail-screen update and put stale server data back.
+     * Merge a successful AniList pull into the local database using the
+     * v1.4.1-proven approach: one bulk read, one bulk write. Preserves
+     * local tier/elo via preserveLocalFields on every incoming row.
      */
     @Transaction
-    suspend fun mergeRemoteEntries(entries: List<AnimeEntry>) {
-        entries.forEach { incoming ->
-            val existing = getById(incoming.anilistId)
-            // Ignore an older server snapshot that arrived after a newer
-            // clean pull. Pending local rows still receive fresh metadata;
-            // preserveLocalFields keeps their tracking payload local.
-            val isOlderRemoteSnapshot = existing?.syncedAt != null &&
-                incoming.syncedAt != null &&
-                incoming.syncedAt < existing.syncedAt
-            if (!isOlderRemoteSnapshot) {
-                upsert(incoming.preserveLocalFields(existing))
-            }
-        }
+    suspend fun mergePullResults(entries: List<AnimeEntry>) {
+        val existing = getAll().associateBy { it.anilistId }
+        val merged = entries.map { it.preserveLocalFields(existing[it.anilistId]) }
+        if (merged.isNotEmpty()) upsertAll(merged)
     }
 
     /**

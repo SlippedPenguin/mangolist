@@ -74,39 +74,11 @@ data class AnimeEntry(
      * defaults is corrected to the incoming mediaType on the same row, but
      * `tier`/`elo` always come from the existing local row.
      */
-    fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry {
-        if (existing == null) return this
-
-        // A pull can finish after the user edits the same title. Never let a
-        // stale AniList snapshot erase a local edit that is still waiting in
-        // the outbox. Metadata can safely come from the server, while the
-        // tracking fields and local-only tier data stay local until the
-        // background worker successfully pushes them.
-        val hasPendingLocalEdit = existing.syncedAt == null || existing.updatedAt > existing.syncedAt
-        return if (hasPendingLocalEdit) {
-            copy(
-                tier = existing.tier,
-                elo = existing.elo,
-                currentEp = existing.currentEp,
-                status = existing.status,
-                notes = existing.notes,
-                personalScore = existing.personalScore,
-                favourite = existing.favourite,
-                listEntryId = listEntryId ?: existing.listEntryId,
-                updatedAt = existing.updatedAt,
-                syncedAt = existing.syncedAt,
-                // Always trust the server/source mediaType; do not preserve a
-                // stale local ANIME default when the incoming row is MANGA.
-                mediaType = mediaType,
-            )
-        } else {
-            copy(
-                tier = existing.tier,
-                elo = existing.elo,
-                // Always trust the server/source mediaType; do not preserve a
-                // stale local ANIME default when the incoming row is MANGA.
-                mediaType = mediaType,
-            )
-        }
-    }
+    fun preserveLocalFields(existing: AnimeEntry?): AnimeEntry = copy(
+        tier = existing?.tier ?: tier,
+        elo = existing?.elo ?: elo,
+        // Always trust the server/source mediaType; do not preserve a stale
+        // local ANIME default when the incoming row is actually MANGA.
+        mediaType = mediaType,
+    )
 }

@@ -94,7 +94,7 @@ fun MangaTabScreen(navController: NavController) {
                         try {
                             val result = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
                             if (result.entries != null && result.entries.isNotEmpty()) {
-                                app.database.animeDao().mergeRemoteEntries(result.entries)
+                                app.database.animeDao().mergePullResults(result.entries)
                             }
                         } finally {
                             isRefreshing = false

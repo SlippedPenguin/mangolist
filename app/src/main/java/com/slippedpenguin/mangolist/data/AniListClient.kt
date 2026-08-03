@@ -508,13 +508,16 @@ class AniListClient(
      * twice (ANIME then MANGA) to populate a single Room table.
      */
     suspend fun syncUserList(token: String, userId: Int, type: String = "ANIME"): SyncResult {
+        android.util.Log.d("AniListClient", "syncUserList($type) called — userId=$userId tokenLen=${token.length}")
         if (token.isBlank()) return SyncResult(null, "No access token. Please log in again.")
         if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
         if (type !in listOf("ANIME", "MANGA")) return SyncResult(null, "Unknown media type: $type")
         // All pull operations share one gate. Several screens can be alive
         // at once (for example Profile + Watchlist), and parallel anime/manga
         // pulls otherwise race one another and amplify AniList rate limits.
+        android.util.Log.d("AniListClient", "syncUserList($type) acquiring mutex…")
         return authenticatedSyncMutex.withLock {
+            android.util.Log.d("AniListClient", "syncUserList($type) mutex acquired, checking network…")
             withNetwork(SyncResult(null, "No internet connection.")) {
                 try {
                     withContext(Dispatchers.IO) {
@@ -559,10 +562,12 @@ class AniListClient(
                     }
                     val body = json.encodeToString(JsonObject.serializer(), payload)
 
+                    android.util.Log.d("AniListClient", "syncUserList($type) POSTing to AniList (bodyLen=${body.length})…")
                     val conn = openPost("https://graphql.anilist.co", token)
                     conn.outputStream.use { it.write(body.toByteArray()) }
 
                     val responseCode = conn.responseCode
+                    android.util.Log.d("AniListClient", "syncUserList($type) HTTP $responseCode")
                     val responseBody = if (responseCode in 200..299) {
                         conn.inputStream.bufferedReader().use { it.readText() }
                     } else {
@@ -622,7 +627,9 @@ class AniListClient(
                         ?.mapNotNull { entry -> parseMediaListEntry(entry, type, nowMillis) }
                         ?.distinctBy { it.anilistId }
                         .orEmpty()
-                    SyncResult(entries, null)
+                    SyncResult(entries, null).also {
+                        android.util.Log.d("AniListClient", "syncUserList($type) SUCCESS — ${entries.size} entries")
+                    }
                 }  // withContext
             } catch (e: CancellationException) {
                 throw e
