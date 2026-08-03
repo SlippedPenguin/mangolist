@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.slippedpenguin.mangolist.ui.MangoNavRoot
 import com.slippedpenguin.mangolist.ui.theme.MangoTheme
+import com.slippedpenguin.mangolist.work.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,6 +96,10 @@ class MainActivity : ComponentActivity() {
                     val userName = viewer?.name
                     val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
                     app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
+                    // The worker may have run before login with no token.
+                    // Re-enqueue now so local offline additions/edits drain
+                    // immediately after authentication succeeds.
+                    SyncWorker.enqueue(app)
                     if (userId > 0) {
                         // v1.2: pull both ANIME and MANGA lists, merging into
                         // the same Room table. AniList IDs are globally
@@ -104,9 +109,7 @@ class MainActivity : ComponentActivity() {
                         val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
-                            val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                            val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
-                            app.database.animeDao().upsertAll(merged)
+                            app.database.animeDao().mergeRemoteEntries(combined)
                         }
                         val firstErr = animeResult.error ?: mangaResult.error
                         if (firstErr != null) {
@@ -133,13 +136,16 @@ class MainActivity : ComponentActivity() {
             val userName = viewer?.name
             val avatarUrl = viewer?.avatarMedium ?: viewer?.avatarLarge
             app.tokenStore.saveToken(token, userId = userId, userName = userName, avatarUrl = avatarUrl)
+            // Re-enqueue after authentication so any local outbox rows made
+            // before login are not stranded by the earlier no-token run.
+            SyncWorker.enqueue(app)
             if (userId > 0) {
                 val animeResult = app.anilistClient.syncUserList(token, userId, "ANIME")
                 val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
                 val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
-                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
-                app.database.animeDao().upsertAll(merged)
+                if (combined.isNotEmpty()) {
+                    app.database.animeDao().mergeRemoteEntries(combined)
+                }
                 val firstErr = animeResult.error ?: mangaResult.error
                 if (firstErr != null && combined.isEmpty()) {
                     runOnUiThread {

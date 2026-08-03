@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.4.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.4)
-> **Working tree:** v1.4.4 UI refresh based on the stable v1.4.1 baseline
-> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.4.
+> **Latest documented release:** [v1.4.5](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.5)
+> **Working tree:** v1.4.5 sync hardening based on the stable v1.4.4 release
+> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.5.
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 
@@ -64,10 +64,11 @@ mangolist/
 - Token persisted in DataStore (`token_prefs`)
 - `getViewer()` fetches and stores userId + userName
 
-### List Sync (one-way: AniList → local)
+### List Sync (AniList ↔ local)
 - **Auto-sync on login:** After OAuth succeeds, `MainActivity` calls `syncUserList(token, userId)` and upserts into Room
 - **Manual sync:** "Sync now" button on ProfileScreen
-- Merges with existing entries, preserving local `tier` and `elo` via `preserveLocalFields`
+- Merges with existing entries in one Room transaction, preserving pending local tracking edits and local `tier`/`elo`
+- Rejects older remote snapshots so a late response cannot roll back newer server data
 - Filters out custom AniList lists via `isCustomList` flag
 - Maps AniList statuses: `CURRENT→watching, PLANNING→plan, COMPLETED→completed, DROPPED→dropped, PAUSED→paused, REPEATING→repeating`
 - Maps scores: AniList `MediaList.score` (0–10 Float, 0.5-step increments) × 10 → local `personalScore` (0–100, display ÷10 with one decimal in the score pill)
@@ -101,7 +102,10 @@ mangolist/
   - `personalScore / 10.0` → score Float (0–10 scale)
   - `notes` → String (empty string clears notes on AniList)
   - `listEntryId` non-null → update; null → create new
-- On success: returns `SaveResult(id, updatedAtSeconds, notes)`; caller writes back `listEntryId`, server `updatedAtSeconds` (×1000), and server `notes` into Room so the next round-trip hits the update path and notes round-trip cleanly
+- On success: returns `SaveResult(id, updatedAtSeconds, notes)`; the worker marks a row clean only if it still matches the exact local snapshot sent, so an edit made during a request remains pending
+- Pull and push requests are serialized per client to avoid duplicate concurrent writes and rate-limit races
+- Cancellation propagates correctly instead of being converted into a false sync failure
+- On success: caller writes back `listEntryId`, server `updatedAtSeconds` (×1000), and server `notes` into Room so the next round-trip hits the update path and notes round-trip cleanly
 - On failure: surfaces an in-screen feedback chip (auto-dismisses after ~4s)
 - **Auto-push:** `SyncWorker` (WorkManager) drains entries whose `updatedAt > syncedAt` (or `syncedAt IS NULL`) whenever the network is available. It is enqueued on app start and after every local edit in `DetailScreen`. Exponential backoff (10s base) on failure.
 - The manual "Sync to AniList" button is no longer gated on `tier != null` — unranked entries can now sync progress/score/notes.

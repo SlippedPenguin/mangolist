@@ -116,9 +116,7 @@ fun WatchlistScreen(navController: NavController) {
                     val mangaResult = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
                     val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                     if (combined.isNotEmpty()) {
-                        val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                        val merged = combined.map { it.preserveLocalFields(existing[it.anilistId]) }
-                        app.database.animeDao().upsertAll(merged)
+                        app.database.animeDao().mergeRemoteEntries(combined)
                     }
                     // v1.2.1: surface any sync error as a toast so the
                     // user knows if their manga list failed to pull.

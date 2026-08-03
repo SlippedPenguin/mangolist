@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
@@ -33,6 +34,51 @@ interface AnimeDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(entries: List<AnimeEntry>)
+
+    /**
+     * Merge a successful AniList pull without overwriting a local outbox
+     * edit. The transaction closes the read/decision/write gap so a refresh
+     * cannot race a detail-screen update and put stale server data back.
+     */
+    @Transaction
+    suspend fun mergeRemoteEntries(entries: List<AnimeEntry>) {
+        entries.forEach { incoming ->
+            val existing = getById(incoming.anilistId)
+            // Ignore an older server snapshot that arrived after a newer
+            // clean pull. Pending local rows still receive fresh metadata;
+            // preserveLocalFields keeps their tracking payload local.
+            val isOlderRemoteSnapshot = existing?.syncedAt != null &&
+                incoming.syncedAt != null &&
+                incoming.syncedAt < existing.syncedAt
+            if (!isOlderRemoteSnapshot) {
+                upsert(incoming.preserveLocalFields(existing))
+            }
+        }
+    }
+
+    /**
+     * Mark a push clean only if the row still matches the snapshot sent to
+     * AniList. A user can edit the same title while the request is in flight;
+     * in that case this returns 0 and leaves the newer edit pending.
+     */
+    @Query("""
+        UPDATE anime_entries
+        SET listEntryId = :listEntryId,
+            notes = :notes,
+            syncedAt = :serverMillis,
+            updatedAt = :serverMillis
+        WHERE anilistId = :anilistId AND updatedAt = :snapshotUpdatedAt
+    """)
+    suspend fun markSyncedIfUnchanged(
+        anilistId: Int,
+        snapshotUpdatedAt: Long,
+        listEntryId: Int,
+        notes: String,
+        serverMillis: Long,
+    ): Int
+
+    @Query("UPDATE anime_entries SET favourite = :favourite WHERE anilistId = :anilistId")
+    suspend fun updateFavourite(anilistId: Int, favourite: Boolean): Int
 
     @Update
     suspend fun update(entry: AnimeEntry)

@@ -164,16 +164,16 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
         scope.launch {
             val d = details ?: return@launch
             dao.upsert(buildEntryFromDetails(d))
+            SyncWorker.enqueue(app)
         }
     }
     /*
      * Toggle favoriting on the Detail screen fires a single round-trip
      * to AniList's `ToggleFavourite` mutation via `AniListClient`. On
      * success we trust the server's response. On network/parse/unauth
-     * failure we optimistically flip the local Room flag so the star
-     * icon still responds to taps; the next pull sync will reconcile it.
-     * Notably we do NOT call SyncWorker.enqueue here — favourite is
-     * media-level state and doesn't ride the per-list-entry dirty queue.
+     * failure we leave the local flag unchanged and show feedback. We do
+     * not enqueue this in the list-entry worker because favourites are
+     * media-level state, not SaveMediaListEntry fields.
      */
     val toggleFavorite: () -> Unit = {
         scope.launch {
@@ -184,12 +184,15 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
             } else {
                 null
             }
-            dao.update(
-                e.copy(
-                    favourite = serverState ?: !e.favourite,
-                    updatedAt = System.currentTimeMillis(),
-                )
-            )
+            if (serverState != null) {
+                // Favourites are media-level AniList state, not part of the
+                // SaveMediaListEntry outbox. Only record the local value when
+                // the server confirmed the toggle; an offline optimistic
+                // change would be overwritten by the next pull.
+                dao.updateFavourite(e.anilistId, serverState)
+            } else {
+                syncFeedback = "Favorite change failed — try again online." to true
+            }
         }
     }
     val requestSync: () -> Unit = {
@@ -203,15 +206,18 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
             val result = app.anilistClient.saveEntry(tok, e)
             if (result != null) {
                 val serverMillis = result.updatedAtSeconds?.let { it * 1000L } ?: System.currentTimeMillis()
-                dao.update(
-                    e.copy(
-                        listEntryId = result.id,
-                        notes = result.notes ?: e.notes,
-                        syncedAt = serverMillis,
-                        updatedAt = serverMillis,
-                    )
+                val updatedRows = dao.markSyncedIfUnchanged(
+                    anilistId = e.anilistId,
+                    snapshotUpdatedAt = e.updatedAt,
+                    listEntryId = result.id,
+                    notes = result.notes ?: e.notes,
+                    serverMillis = serverMillis,
                 )
-                syncFeedback = "Synced to AniList" to false
+                syncFeedback = if (updatedRows > 0) {
+                    "Synced to AniList" to false
+                } else {
+                    "Saved, but a newer edit is still pending" to false
+                }
             } else {
                 syncFeedback = "Sync failed — try again." to true
             }

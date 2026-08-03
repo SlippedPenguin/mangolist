@@ -63,6 +63,7 @@ import com.slippedpenguin.mangolist.ui.components.AnimePosterCard
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TierUnranked
+import com.slippedpenguin.mangolist.work.SyncWorker
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -272,6 +273,7 @@ fun ExploreScreen(navController: NavController, forcedMediaType: String? = null)
                             scope.launch {
                                 if (entry.anilistId !in inListIds) {
                                     app.database.animeDao().upsert(entry)
+                                    SyncWorker.enqueue(app)
                                 }
                                 navController.navigate("detail/${entry.mediaType}/${entry.anilistId}")
                             }

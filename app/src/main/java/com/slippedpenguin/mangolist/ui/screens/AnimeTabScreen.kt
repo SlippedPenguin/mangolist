@@ -98,9 +98,7 @@ fun AnimeTabScreen(
                         try {
                             val result = app.anilistClient.syncUserList(tok, id.toInt(), "ANIME")
                             if (result.entries != null && result.entries.isNotEmpty()) {
-                                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                                val merged = result.entries.map { it.preserveLocalFields(existing[it.anilistId]) }
-                                app.database.animeDao().upsertAll(merged)
+                                app.database.animeDao().mergeRemoteEntries(result.entries)
                             }
                         } finally {
                             isRefreshing = false

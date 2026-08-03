@@ -43,14 +43,23 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                 val result = app.anilistClient.saveEntry(token, entry)
                 if (result != null) {
                     val serverMillis = result.updatedAtSeconds?.let { it * 1000L } ?: System.currentTimeMillis()
-                    dao.update(
-                        entry.copy(
-                            listEntryId = result.id,
-                            notes = result.notes ?: entry.notes,
-                            syncedAt = serverMillis,
-                            updatedAt = serverMillis,
-                        )
+                    val updatedRows = dao.markSyncedIfUnchanged(
+                        anilistId = entry.anilistId,
+                        snapshotUpdatedAt = entry.updatedAt,
+                        listEntryId = result.id,
+                        notes = result.notes ?: entry.notes,
+                        serverMillis = serverMillis,
                     )
+                    if (updatedRows == 0) {
+                        // The user edited this row while the request was in
+                        // flight. Keep the newer local edit dirty and retry
+                        // so the replacement worker sends it next.
+                        anyFailed = true
+                        android.util.Log.d(
+                            "SyncWorker",
+                            "Skipped clean mark for changed anilistId=${entry.anilistId}",
+                        )
+                    }
                 } else {
                     anyFailed = true
                 }

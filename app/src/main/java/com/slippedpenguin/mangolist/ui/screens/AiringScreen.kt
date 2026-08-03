@@ -155,11 +155,7 @@ fun AiringScreen(
             val mangaResult = app.anilistClient.syncUserList(t, userId, "MANGA")
             val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
             if (combined.isNotEmpty()) {
-                val existing = app.database.animeDao().getAll().associateBy { it.anilistId }
-                val merged = combined.map { incoming ->
-                    incoming.preserveLocalFields(existing[incoming.anilistId])
-                }
-                app.database.animeDao().upsertAll(merged)
+                app.database.animeDao().mergeRemoteEntries(combined)
             }
             val firstErr = animeResult.error ?: mangaResult.error
             if (firstErr != null) {

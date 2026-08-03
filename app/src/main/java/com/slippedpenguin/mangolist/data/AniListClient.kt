@@ -27,6 +27,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -82,6 +83,7 @@ class AniListClient(
      * "All airing" often returned empty while "On my list" succeeded.
      */
     private val anonRequestMutex = Mutex()
+    private val authenticatedSyncMutex = Mutex()
     private var lastAnonRequestMs: Long = 0L
 
     private suspend fun rateLimitGate() {
@@ -509,9 +511,13 @@ class AniListClient(
         if (token.isBlank()) return SyncResult(null, "No access token. Please log in again.")
         if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
         if (type !in listOf("ANIME", "MANGA")) return SyncResult(null, "Unknown media type: $type")
-        return withNetwork(SyncResult(null, "No internet connection.")) {
-            try {
-                withContext(Dispatchers.IO) {
+        // All pull operations share one gate. Several screens can be alive
+        // at once (for example Profile + Watchlist), and parallel anime/manga
+        // pulls otherwise race one another and amplify AniList rate limits.
+        return authenticatedSyncMutex.withLock {
+            withNetwork(SyncResult(null, "No internet connection.")) {
+                try {
+                    withContext(Dispatchers.IO) {
                     val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
                     val payload = buildJsonObject {
                         put(
@@ -609,6 +615,8 @@ class AniListClient(
                         .orEmpty()
                     SyncResult(entries, null)
                 }  // withContext
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("AniListClient", "syncUserList($type) failed: ${e.javaClass.simpleName}", e)
                 SyncResult(null, e.message ?: "Unknown sync error (${e.javaClass.simpleName})")
@@ -831,7 +839,12 @@ class AniListClient(
      * not `scoreRaw: Int`). Also converts the app's 0-100 integer to
      * AniList's 0.0-10.0 Float before sending.
      */
-    suspend fun saveEntry(token: String, entry: AnimeEntry): SaveResult? {
+    suspend fun saveEntry(token: String, entry: AnimeEntry): SaveResult? =
+        authenticatedSyncMutex.withLock {
+            saveEntryUnlocked(token, entry)
+        }
+
+    private suspend fun saveEntryUnlocked(token: String, entry: AnimeEntry): SaveResult? {
         if (token.isBlank()) return null
         return withNetwork(null) {
             try {
@@ -906,6 +919,8 @@ class AniListClient(
                         notes = returnedNotes,
                     )
                 }  // withContext
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "saveEntry failed", e)
                 null
@@ -974,6 +989,8 @@ class AniListClient(
                         id.int == animeId
                     }
                 }  // withContext
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "toggleFavorite failed", e)
                 null
