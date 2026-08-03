@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.4.9](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.9)
-> **Working tree:** v1.4.9 in-app Sync Diagnostics panel (Profile screen) — no adb needed
-> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.9.
+> **Latest documented release:** [v1.4.10](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.10)
+> **Working tree:** v1.4.10 diagnostics now log the raw AniList response (body preview, lists/entries counts, per-entry parse errors) to pinpoint the silent 0-entry sync bug
+> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.10.
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 

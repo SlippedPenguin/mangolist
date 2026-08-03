@@ -595,6 +595,10 @@ class AniListClient(
                     } else {
                         conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                     }
+                    SyncDiagnostics.log(
+                        "syncUserList($type) response body",
+                        "${responseBody.length} bytes, preview: ${responseBody.take(160)}",
+                    )
 
                     if (responseCode !in 200..299) {
                         val msg = "HTTP $responseCode: ${responseBody.take(200)}"
@@ -647,16 +651,27 @@ class AniListClient(
                     // Include every list (status lists AND custom lists).
                     // An entry may appear in both a status list and a custom
                     // list, so distinctBy deduplicates by media id.
-                    val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
+                    val rawLists = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                         ?.filterIsInstance<JsonObject>()
-                        ?.flatMap { list ->
-                            (list["entries"] as? kotlinx.serialization.json.JsonArray)
-                                ?.filterIsInstance<JsonObject>()
-                                .orEmpty()
-                        }
-                        ?.mapNotNull { entry -> parseMediaListEntry(entry, type, nowMillis) }
-                        ?.distinctBy { it.anilistId }
                         .orEmpty()
+                    val rawEntries = rawLists.flatMap { list ->
+                        (list["entries"] as? kotlinx.serialization.json.JsonArray)
+                            ?.filterIsInstance<JsonObject>()
+                            .orEmpty()
+                    }
+                    SyncDiagnostics.log(
+                        "syncUserList($type) raw response",
+                        "lists=${rawLists.size}, raw entries=${rawEntries.size}, list names=${rawLists.mapNotNull { (it["name"] as? JsonPrimitive)?.content }.joinToString(",")}",
+                    )
+                    val entries = rawEntries
+                        .mapNotNull { entry -> parseMediaListEntry(entry, type, nowMillis) }
+                        .distinctBy { it.anilistId }
+                    if (rawEntries.isNotEmpty() && entries.isEmpty()) {
+                        SyncDiagnostics.log(
+                            "syncUserList($type) WARNING",
+                            "${rawEntries.size} raw entries but 0 parsed — every entry failed parsing",
+                        )
+                    }
                     SyncResult(entries, null).also {
                         android.util.Log.d("AniListClient", "syncUserList($type) SUCCESS — ${entries.size} entries")
                         SyncDiagnostics.setSummary("Sync $type OK — ${entries.size} entries")
@@ -680,6 +695,10 @@ class AniListClient(
             parseMediaListEntrySafe(entry, mediaType, nowMillis)
         } catch (e: Exception) {
             android.util.Log.w("AniListClient", "Skipping one list entry due to parse error", e)
+            SyncDiagnostics.log(
+                "syncUserList($mediaType) entry parse error",
+                "${e.javaClass.simpleName}: ${e.message}",
+            )
             null
         }
     }
