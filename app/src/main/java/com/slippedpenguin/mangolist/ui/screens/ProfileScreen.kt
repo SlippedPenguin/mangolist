@@ -1,5 +1,8 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
@@ -27,6 +30,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,9 +57,12 @@ import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.BuildConfig
 import com.slippedpenguin.mangolist.data.ScoreDisplay
 import com.slippedpenguin.mangolist.data.ScoreScale
+import com.slippedpenguin.mangolist.data.SyncDiagnostics
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
+import com.slippedpenguin.mangolist.ui.theme.BgInput
+import com.slippedpenguin.mangolist.ui.theme.StatusCompleted
 import com.slippedpenguin.mangolist.ui.theme.StatusDropped
 import com.slippedpenguin.mangolist.ui.theme.StatusPlan
 import com.slippedpenguin.mangolist.ui.theme.StatusWatching
@@ -64,6 +72,7 @@ import com.slippedpenguin.mangolist.ui.theme.statusColor
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.util.Locale
@@ -128,6 +137,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         async { app.anilistClient.syncUserList(tok, id.toInt(), "ANIME") },
                         async { app.anilistClient.syncUserList(tok, id.toInt(), "MANGA") },
                     )
+                    SyncDiagnostics.summarizePull(animeResult, mangaResult)
                     val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                     if (combined.isNotEmpty()) {
                         app.database.animeDao().mergePullResults(combined)
@@ -410,6 +420,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                             async { app.anilistClient.syncUserList(token, id.toInt(), "ANIME") },
                             async { app.anilistClient.syncUserList(token, id.toInt(), "MANGA") },
                         )
+                        SyncDiagnostics.summarizePull(animeResult, mangaResult)
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
                             app.database.animeDao().mergePullResults(combined)
@@ -434,6 +445,9 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Sign out", color = StatusDropped) }
             }
+
+            Spacer(Modifier.height(16.dp))
+            DiagnosticsCard()
         }
     }
 }
@@ -630,6 +644,119 @@ private fun prettyFormat(fmt: String?): String = when (fmt) {
     "MUSIC"       -> "Music"
     null          -> "Unknown"
     else          -> fmt.lowercase().replaceFirstChar { it.uppercase() }
+}
+
+/*
+ * Sync diagnostics — in-app alternative to `adb logcat`. Renders the last
+ * sync attempt step-by-step (network, token, HTTP, GraphQL, parse, DB write)
+ * from SyncDiagnostics, with a copy-to-clipboard button so the user can paste
+ * the exact failure back into a bug report without developer tools.
+ */
+@Composable
+private fun DiagnosticsCard() {
+    val context = LocalContext.current
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    var refreshKey by remember { mutableStateOf(0) }
+    // Poll once a second so the card stays live while a sync runs in the
+    // background (pull-to-refresh, background worker, login sync).
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1000)
+            refreshKey++
+        }
+    }
+    val summary = remember(refreshKey) { SyncDiagnostics.summary() }
+    val lines   = remember(refreshKey) { SyncDiagnostics.snapshot() }
+    val ok = summary.startsWith("Sync") && summary.contains("OK")
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "SYNC DIAGNOSTICS",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+                letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 10.dp, height = 10.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                summary.contains("FAILED") -> StatusDropped
+                                ok -> StatusCompleted
+                                else -> TextMuted
+                            },
+                        ),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(BgInput)
+                    .verticalScroll(rememberScrollState())
+                    .padding(10.dp),
+            ) {
+                if (lines.isEmpty()) {
+                    Text(
+                        text = "No sync activity yet. Pull to refresh or tap \"Sync now\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
+                    )
+                } else {
+                    Column {
+                        lines.forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                lineHeight = 15.sp,
+                                color = TextSecondary,
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val text = buildString {
+                            appendLine("MangoList ${BuildConfig.VERSION_NAME} — sync diagnostics")
+                            appendLine(summary)
+                            appendLine("— log —")
+                            append(SyncDiagnostics.text())
+                        }
+                        clipboard.setPrimaryClip(ClipData.newPlainText("MangoList diagnostics", text))
+                        Toast.makeText(context, "Diagnostics copied to clipboard", Toast.LENGTH_SHORT).show()
+                    },
+                ) { Text("Copy diagnostics") }
+                TextButton(
+                    onClick = {
+                        SyncDiagnostics.clear()
+                        Toast.makeText(context, "Diagnostics cleared", Toast.LENGTH_SHORT).show()
+                    },
+                ) { Text("Clear") }
+            }
+        }
+    }
 }
 
 /*

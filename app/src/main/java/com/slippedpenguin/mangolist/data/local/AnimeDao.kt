@@ -45,6 +45,10 @@ interface AnimeDao {
         val existing = getAll().associateBy { it.anilistId }
         val merged = entries.map { it.preserveLocalFields(existing[it.anilistId]) }
         if (merged.isNotEmpty()) upsertAll(merged)
+        com.slippedpenguin.mangolist.data.SyncDiagnostics.log(
+            "DB merge",
+            "pulled=${entries.size}, existing=${existing.size}, written=${merged.size}",
+        )
     }
 
     /**

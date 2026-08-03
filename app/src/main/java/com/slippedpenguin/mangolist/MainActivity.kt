@@ -107,6 +107,7 @@ class MainActivity : ComponentActivity() {
                         // stamped with its own mediaType on upsert.
                         val animeResult = app.anilistClient.syncUserList(token, userId, "ANIME")
                         val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
+                        com.slippedpenguin.mangolist.data.SyncDiagnostics.summarizePull(animeResult, mangaResult)
                         val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                         if (combined.isNotEmpty()) {
                             app.database.animeDao().mergePullResults(combined)
@@ -142,6 +143,7 @@ class MainActivity : ComponentActivity() {
             if (userId > 0) {
                 val animeResult = app.anilistClient.syncUserList(token, userId, "ANIME")
                 val mangaResult = app.anilistClient.syncUserList(token, userId, "MANGA")
+                com.slippedpenguin.mangolist.data.SyncDiagnostics.summarizePull(animeResult, mangaResult)
                 val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
                 if (combined.isNotEmpty()) {
                     app.database.animeDao().mergePullResults(combined)

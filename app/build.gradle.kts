@@ -33,8 +33,8 @@ android {
         applicationId = "com.slippedpenguin.mangolist"
         minSdk = 26      // Covers ~95% of active devices; required by Coil 3 / Material You deps
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.4.8"
+        versionCode = 27
+        versionName = "1.4.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true

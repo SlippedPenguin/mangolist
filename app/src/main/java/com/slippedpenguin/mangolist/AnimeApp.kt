@@ -22,6 +22,9 @@ class AnimeApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // The in-app sync diagnostics panel needs its prefs loaded before
+        // any sync can run (workers, pull-to-refresh, login sync).
+        SyncDiagnostics.init(this)
         // Drain any local edits that were made while offline or before the
         // app was killed. WorkManager deduplicates this with REPLACE.
         SyncWorker.enqueue(this)

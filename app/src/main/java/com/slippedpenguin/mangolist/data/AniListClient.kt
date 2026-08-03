@@ -509,15 +509,35 @@ class AniListClient(
      */
     suspend fun syncUserList(token: String, userId: Int, type: String = "ANIME"): SyncResult {
         android.util.Log.d("AniListClient", "syncUserList($type) called — userId=$userId tokenLen=${token.length}")
-        if (token.isBlank()) return SyncResult(null, "No access token. Please log in again.")
-        if (userId <= 0) return SyncResult(null, "Invalid user ID. Please log in again.")
-        if (type !in listOf("ANIME", "MANGA")) return SyncResult(null, "Unknown media type: $type")
+        SyncDiagnostics.log("syncUserList($type) started", "userId=$userId, token length=${token.length}")
+        if (token.isBlank()) {
+            SyncDiagnostics.setSummary("Sync $type FAILED — no access token")
+            return SyncResult(null, "No access token. Please log in again.")
+        }
+        if (userId <= 0) {
+            SyncDiagnostics.setSummary("Sync $type FAILED — invalid user ID")
+            return SyncResult(null, "Invalid user ID. Please log in again.")
+        }
+        if (type !in listOf("ANIME", "MANGA")) {
+            SyncDiagnostics.setSummary("Sync $type FAILED — unknown media type")
+            return SyncResult(null, "Unknown media type: $type")
+        }
         // All pull operations share one gate. Several screens can be alive
         // at once (for example Profile + Watchlist), and parallel anime/manga
         // pulls otherwise race one another and amplify AniList rate limits.
         android.util.Log.d("AniListClient", "syncUserList($type) acquiring mutex…")
+        SyncDiagnostics.log("syncUserList($type) acquiring sync mutex")
         return authenticatedSyncMutex.withLock {
             android.util.Log.d("AniListClient", "syncUserList($type) mutex acquired, checking network…")
+            val online = networkObserver.isCurrentlyOnline()
+            SyncDiagnostics.log("syncUserList($type) mutex acquired", "network=$online")
+            if (!online) {
+                // Log the offline fail path explicitly — the default arg below
+                // is evaluated before withNetwork() checks connectivity, so it
+                // must not carry side effects.
+                SyncDiagnostics.setSummary("Sync $type FAILED — no internet connection")
+                SyncDiagnostics.log("syncUserList($type) offline — skipping request")
+            }
             withNetwork(SyncResult(null, "No internet connection.")) {
                 try {
                     withContext(Dispatchers.IO) {
@@ -563,11 +583,13 @@ class AniListClient(
                     val body = json.encodeToString(JsonObject.serializer(), payload)
 
                     android.util.Log.d("AniListClient", "syncUserList($type) POSTing to AniList (bodyLen=${body.length})…")
+                    SyncDiagnostics.log("syncUserList($type) POSTing to AniList", "body=${body.length} bytes")
                     val conn = openPost("https://graphql.anilist.co", token)
                     conn.outputStream.use { it.write(body.toByteArray()) }
 
                     val responseCode = conn.responseCode
                     android.util.Log.d("AniListClient", "syncUserList($type) HTTP $responseCode")
+                    SyncDiagnostics.log("syncUserList($type) HTTP response", "status=$responseCode")
                     val responseBody = if (responseCode in 200..299) {
                         conn.inputStream.bufferedReader().use { it.readText() }
                     } else {
@@ -577,6 +599,8 @@ class AniListClient(
                     if (responseCode !in 200..299) {
                         val msg = "HTTP $responseCode: ${responseBody.take(200)}"
                         android.util.Log.w("AniListClient", "syncUserList($type) $msg")
+                        SyncDiagnostics.setSummary("Sync $type FAILED — HTTP $responseCode")
+                        SyncDiagnostics.log("syncUserList($type) HTTP error", msg)
                         return@withContext SyncResult(null, msg)
                     }
 
@@ -584,6 +608,8 @@ class AniListClient(
                         ?: run {
                             val msg = "Response is not a JSON object: ${responseBody.take(200)}"
                             android.util.Log.w("AniListClient", "syncUserList $msg")
+                            SyncDiagnostics.setSummary("Sync $type FAILED — malformed response")
+                            SyncDiagnostics.log("syncUserList($type) parse error", msg)
                             return@withContext SyncResult(null, msg)
                         }
 
@@ -593,6 +619,8 @@ class AniListClient(
                             ((it as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "GraphQL error"
                         }
                         android.util.Log.w("AniListClient", "syncUserList($type) GraphQL errors: $msg")
+                        SyncDiagnostics.setSummary("Sync $type FAILED — ${msg.take(120)}")
+                        SyncDiagnostics.log("syncUserList($type) GraphQL error", msg)
                         return@withContext SyncResult(null, msg)
                     }
 
@@ -606,6 +634,8 @@ class AniListClient(
                         // AniList returns partial or unexpected data.
                         val msg = "AniList returned no MediaListCollection for $type."
                         android.util.Log.w("AniListClient", "syncUserList $msg")
+                        SyncDiagnostics.setSummary("Sync $type FAILED — empty collection response")
+                        SyncDiagnostics.log("syncUserList($type) empty collection", msg)
                         return@withContext SyncResult(null, msg)
                     }
                     val collObj = (collection as? JsonObject)
@@ -629,12 +659,16 @@ class AniListClient(
                         .orEmpty()
                     SyncResult(entries, null).also {
                         android.util.Log.d("AniListClient", "syncUserList($type) SUCCESS — ${entries.size} entries")
+                        SyncDiagnostics.setSummary("Sync $type OK — ${entries.size} entries")
+                        SyncDiagnostics.log("syncUserList($type) success", "${entries.size} entries parsed")
                     }
                 }  // withContext
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.e("AniListClient", "syncUserList($type) failed: ${e.javaClass.simpleName}", e)
+                SyncDiagnostics.setSummary("Sync $type FAILED — ${e.message?.take(120) ?: e.javaClass.simpleName}")
+                SyncDiagnostics.log("syncUserList($type) exception", e.javaClass.simpleName + " — " + (e.message ?: "no message"))
                 SyncResult(null, e.message ?: "Unknown sync error (${e.javaClass.simpleName})")
             }
         }
@@ -862,7 +896,11 @@ class AniListClient(
         }
 
     private suspend fun saveEntryUnlocked(token: String, entry: AnimeEntry): SaveResult? {
-        if (token.isBlank()) return null
+        if (token.isBlank()) {
+            SyncDiagnostics.log("saveEntry skipped", "no token for anilistId=${entry.anilistId}")
+            return null
+        }
+        SyncDiagnostics.log("saveEntry started", "anilistId=${entry.anilistId} title='${entry.title}' status=${entry.status}")
         return withNetwork(null) {
             try {
                 withContext(Dispatchers.IO) {
@@ -907,6 +945,7 @@ class AniListClient(
                     if (conn.responseCode !in 200..299) {
                         val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                         android.util.Log.w("AniListClient", "saveEntry HTTP ${conn.responseCode} (anilistId=${entry.anilistId}, status=${entry.status}, currentEp=${entry.currentEp}, personalScore=${entry.personalScore}, notes.len=${entry.notes.length}): ${errorBody.take(400)}")
+                        SyncDiagnostics.log("saveEntry HTTP error", "anilistId=${entry.anilistId} HTTP ${conn.responseCode}: ${errorBody.take(200)}")
                         return@withContext null
                     }
                     val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
@@ -916,6 +955,7 @@ class AniListClient(
                             ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
                         }
                         android.util.Log.w("AniListClient", "saveEntry GraphQL errors (anilistId=${entry.anilistId}): $msgs")
+                        SyncDiagnostics.log("saveEntry GraphQL error", "anilistId=${entry.anilistId}: $msgs")
                         return@withContext null
                     }
                     val saveNode = root["data"]?.jsonObject?.get("SaveMediaListEntry")?.jsonObject ?: run {
@@ -930,6 +970,7 @@ class AniListClient(
                         is kotlinx.serialization.json.JsonPrimitive -> notesElement.content
                         else -> null
                     }
+                    SyncDiagnostics.log("saveEntry success", "anilistId=${entry.anilistId} -> listEntryId=$id")
                     SaveResult(
                         id = id,
                         updatedAtSeconds = updatedAtSeconds,
@@ -940,6 +981,7 @@ class AniListClient(
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "saveEntry failed", e)
+                SyncDiagnostics.log("saveEntry exception", "anilistId=${entry.anilistId}: ${e.javaClass.simpleName} — ${e.message}")
                 null
             }
         }
