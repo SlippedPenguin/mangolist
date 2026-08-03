@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.1](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.1)
-> **Working tree:** v1.5.1 UI/UX hardening on top of v1.5.0: guaranteed cover placeholders (CoverImage — no more blank "showing nothing" manga cards), tierlist one-tap "Rank from my ratings" seed from existing personal scores + on-device-only save note, removed the Profile out-of-10/out-of-100 toggle, crossfaded Detail hero background swap + faded loading veil, and a pinned filter island (no scrolling back up to switch All/Watching/Completed) with zero-count status chips hidden
-> **Deprecated releases:** v1.5.2–v1.5.4 are retained for history but should not be installed; the old broken v1.5.0/v1.5.1 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening).
+> **Latest documented release:** [v1.5.2](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.2)
+> **Working tree:** v1.5.2 fixes three Detail/UX issues on top of v1.5.1: (1) relations now navigate with each relation's OWN media type — tapping a Manga Adaptation from an anime's "Related" section previously opened a dead "Untitled" screen because the app fetched the manga ID with type=ANIME (AniList returns 404); also renamed "Related anime" → "Related" and added native-title fallbacks so Japanese-only titles never render as Untitled. (2) The Detail hero no longer swaps from the poster to the banner: the banner slot only ever renders the wide banner (crossfading from the cover-color backdrop), and the poster stays in its constant bottom-left card — the jarring "background photo change" is gone. (3) Tier list is one tap away: a Tune action on the Home top bar plus the tier shortcut card moved above the fold on Home.
+> **Deprecated releases:** v1.5.3–v1.5.4 are retained for history but should not be installed; the old broken v1.5.0/v1.5.1 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes).
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 

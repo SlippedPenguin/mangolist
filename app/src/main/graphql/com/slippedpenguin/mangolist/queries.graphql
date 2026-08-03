@@ -58,6 +58,7 @@ query GetMediaDetails($id: Int!, $type: MediaType = ANIME) {
           title {
             romaji
             english
+            native
           }
           coverImage {
             large
@@ -260,7 +261,7 @@ query GetNextAiringEpisodes($ids: [Int!]) {
 
 fragment AnimeCardFields on Media {
   id
-  title { romaji english }
+  title { romaji english native }
   coverImage { large medium color }
   episodes
   chapters

@@ -90,6 +90,15 @@ fun HomeScreen(navController: NavController) {
             }
         }
 
+        // v1.5.2: tier shortcut moved above the fold so the tier list is
+        // reachable without scrolling past every active title.
+        item {
+            TierShortcut(
+                rankedCount = rankedCount,
+                onClick = { navController.navigate("tiers") },
+            )
+        }
+
         if (inProgress.isNotEmpty()) {
             item { SectionHeading("Pick up where you left off", "Active titles") }
             items(inProgress, key = { "home_progress_${it.mediaType}_${it.anilistId}" }) { entry ->
@@ -112,13 +121,6 @@ fun HomeScreen(navController: NavController) {
                     showTier = false,
                 )
             }
-        }
-
-        item {
-            TierShortcut(
-                rankedCount = rankedCount,
-                onClick = { navController.navigate("tiers") },
-            )
         }
     }
 }

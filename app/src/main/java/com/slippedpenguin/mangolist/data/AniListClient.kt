@@ -844,10 +844,11 @@ class AniListClient(
                     val n = edge.node ?: return@mapNotNull null
                     RelationCard(
                         id           = n.id,
-                        title        = n.title?.english ?: n.title?.romaji,
+                        title        = n.title?.english ?: n.title?.romaji ?: n.title?.native,
                         coverLarge   = n.coverImage?.large,
                         relationType = edge.relationType?.rawValue,
                         format       = n.format?.rawValue,
+                        mediaType    = n.type?.rawValue ?: "ANIME",
                     )
                 }
 
@@ -855,6 +856,7 @@ class AniListClient(
                 id            = cf?.id ?: 0,
                 titleEnglish  = cf?.title?.english,
                 titleRomaji   = cf?.title?.romaji,
+                titleNative   = cf?.title?.native,
                 coverLarge    = cf?.coverImage?.large ?: cf?.coverImage?.medium,
                 coverColor    = cf?.coverImage?.color,
                 bannerImage   = m.bannerImage,
@@ -1273,6 +1275,7 @@ data class MediaDetails(
     val id: Int,
     val titleEnglish: String?,
     val titleRomaji: String?,
+    val titleNative: String? = null,
     val coverLarge: String?,
     val coverColor: String?,
     val bannerImage: String?,
@@ -1306,6 +1309,7 @@ data class RelationCard(
     val coverLarge: String?,
     val relationType: String?,
     val format: String?,
+    val mediaType: String = "ANIME",
 )
 
 /*

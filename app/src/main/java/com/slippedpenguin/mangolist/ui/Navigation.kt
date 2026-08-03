@@ -15,8 +15,10 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -106,6 +108,18 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             if (isOnBottomNav && currentTitle != null) {
                 TopAppBar(
                     title = { Text(text = currentTitle) },
+                    // v1.5.2: one-tap tier list access from the Home bar.
+                    actions = {
+                        if (currentRoute == BottomDest.Home.route) {
+                            IconButton(onClick = { navController.navigate("tiers") }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Tune,
+                                    contentDescription = "Tier list",
+                                    tint = Accent,
+                                )
+                            }
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background,
                         titleContentColor = MaterialTheme.colorScheme.onBackground,

@@ -264,11 +264,17 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
             }
             val relations = details?.relations.orEmpty()
             if (relations.isNotEmpty()) {
-                item { SectionTitle("Related anime") }
+                item { SectionTitle("Related") }
                 item {
                     RelationsRow(
                         relations = relations,
-                        onNavigate = { relationId -> navController.navigate("detail/$resolvedMediaType/$relationId") },
+                        // v1.5.2: navigate with the relation's OWN media type,
+                        // not the current screen's. Fetching a manga ID with
+                        // type=ANIME returns 404 from AniList, which left manga
+                        // adaptations stuck on a dead "Untitled" screen.
+                        onNavigate = { relation ->
+                            navController.navigate("detail/${relation.mediaType}/${relation.id}")
+                        },
                     )
                 }
             }
@@ -418,13 +424,21 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
 \* ------------------------------------------------------------------ */
 @Composable
 private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
-    val bannerUrl = details?.bannerImage ?: entry?.cover
+    // v1.5.2: the banner slot only ever renders the wide banner image.
+    // Previously it fell back to `entry?.cover`, so opening a detail screen
+    // showed the tall poster stretched across the hero, then swapped to the
+    // wide banner the instant GetMediaDetails landed — the jarring "photo
+    // changes" the user kept hitting. Now the slot starts on the cover-color
+    // backdrop and crossfades straight to the banner; the poster lives in
+    // the small bottom-left card below, which never changes identity.
+    val bannerUrl = details?.bannerImage
     val fallbackColor = remember(details?.coverColor, entry?.coverColor) {
         val hex = details?.coverColor ?: entry?.coverColor ?: return@remember null
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
     }
     val heroLabel = details?.titleEnglish?.takeIf { it.isNotBlank() }
         ?: details?.titleRomaji?.takeIf { it.isNotBlank() }
+        ?: details?.titleNative?.takeIf { it.isNotBlank() }
         ?: entry?.title
     Box(
         modifier = Modifier
@@ -492,11 +506,13 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
 private fun TitleBlock(details: MediaDetails?, entry: AnimeEntry?, loaded: Boolean) {
     val displayTitle = details?.titleEnglish?.takeIf { it.isNotBlank() }
         ?: details?.titleRomaji?.takeIf { it.isNotBlank() }
+        ?: details?.titleNative?.takeIf { it.isNotBlank() }
         ?: entry?.title
         ?: if (loaded) "Untitled" else "Loading…"
     val altTitle = when {
         details?.titleRomaji != null && details.titleRomaji != displayTitle -> details.titleRomaji
         details?.titleEnglish != null && details.titleEnglish != displayTitle -> details.titleEnglish
+        details?.titleNative != null && details.titleNative != displayTitle -> details.titleNative
         else -> null
     }
     Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)) {
@@ -753,7 +769,7 @@ private fun CharactersRow(characters: List<CharacterCard>) {
 }
 
 @Composable
-private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Unit = {}) {
+private fun RelationsRow(relations: List<RelationCard>, onNavigate: (RelationCard) -> Unit = {}) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -762,7 +778,7 @@ private fun RelationsRow(relations: List<RelationCard>, onNavigate: (Int) -> Uni
         items(relations) { r ->
             Card(
                 modifier = Modifier.width(140.dp),
-                onClick = { onNavigate(r.id) },
+                onClick = { onNavigate(r) },
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(10.dp),
             ) {
