@@ -22,11 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
@@ -76,15 +74,15 @@ fun AnimePosterCard(
             border = BorderStroke(1.dp, BorderSubtle),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Tier-tinted fallback if the cover URL is missing or the
-                // AsyncImage fails to load — prevents an unstyled gray box.
-                AsyncImage(
+                // CoverImage draws a tier-tinted letter placeholder when the
+                // cover is missing or fails to load, so poster tiles never
+                // render as a blank dark box on the Explore carousels.
+                CoverImage(
                     model = entry.cover,
                     contentDescription = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(tierColor(entry.tier).copy(alpha = 0.3f)),
+                    tint = tierColor(entry.tier).copy(alpha = 0.35f),
+                    label = entry.title,
+                    modifier = Modifier.fillMaxSize(),
                 )
                 if (entry.averageScore != null && entry.averageScore > 0) {
                     // AniList's averageScore is 0-100; render as a small badge

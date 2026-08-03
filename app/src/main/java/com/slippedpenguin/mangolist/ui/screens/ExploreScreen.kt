@@ -49,17 +49,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.AnimePosterCard
+import com.slippedpenguin.mangolist.ui.components.CoverImage
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TierUnranked
@@ -596,10 +595,10 @@ private fun SearchResultRow(entry: AnimeEntry, inList: Boolean, onAdd: () -> Uni
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        AsyncImage(
+        CoverImage(
             model = entry.cover,
             contentDescription = entry.title,
-            contentScale = ContentScale.Crop,
+            label = entry.title,
             modifier = Modifier
                 .size(width = 56.dp, height = 80.dp)
                 .clip(RoundedCornerShape(8.dp)),

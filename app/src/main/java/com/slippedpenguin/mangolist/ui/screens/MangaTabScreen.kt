@@ -145,62 +145,65 @@ private fun MangaWatchlistContent(
         }
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
-    ) {
-        item {
-            LibraryHeader(
-                title = "Your manga",
-                subtitle = "Pick up your next chapter anytime.",
-                total = mangaEntries.size,
-                active = mangaEntries.count { it.status in listOf("watching", "paused", "repeating") },
-                planned = mangaEntries.count { it.status == "plan" },
-                onExplore = onExplore,
-            )
-        }
-        item {
-            LibraryFilterBar(
-                selectedStatus = selectedStatus,
-                counts = counts,
-                onSelect = { selectedStatus = it },
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-        if (filtered.isEmpty()) {
+    // v1.5.1: the filter island is pinned ABOVE the list so switching
+    // categories never requires scrolling back to the top. The header card
+    // still scrolls away, but the All/Watching/Completed chips stay put.
+    Column(modifier = Modifier.fillMaxSize()) {
+        LibraryFilterBar(
+            selectedStatus = selectedStatus,
+            counts = counts,
+            onSelect = { selectedStatus = it },
+            modifier = Modifier.padding(vertical = 6.dp),
+        )
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(bottom = 24.dp),
+        ) {
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(240.dp)
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (mangaEntries.isEmpty()) "Your manga library is empty" else "Nothing in this status",
-                            style = MaterialTheme.typography.titleMedium,
-                            textAlign = TextAlign.Center,
-                        )
-                        Text(
-                            text = if (mangaEntries.isEmpty()) "Sync AniList or open Explore to find your next series." else "Try another filter or update a title's status.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
+                LibraryHeader(
+                    title = "Your manga",
+                    subtitle = "Pick up your next chapter anytime.",
+                    total = mangaEntries.size,
+                    active = mangaEntries.count { it.status in listOf("watching", "paused", "repeating") },
+                    planned = mangaEntries.count { it.status == "plan" },
+                    onExplore = onExplore,
+                )
+            }
+            if (filtered.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp)
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (mangaEntries.isEmpty()) "Your manga library is empty" else "Nothing in this status",
+                                style = MaterialTheme.typography.titleMedium,
+                                textAlign = TextAlign.Center,
+                            )
+                            Text(
+                                text = if (mangaEntries.isEmpty()) "Sync AniList or open Explore to find your next series." else "Try another filter or update a title's status.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(top = 6.dp),
+                            )
+                        }
                     }
                 }
-            }
-        } else {
-            items(filtered, key = { it.anilistId }) { entry ->
-                AnimeCard(
-                    entry = entry,
-                    onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                    showSyncPending = true,
-                    showRelativeTimestamp = true,
-                    showFavorite = true,
-                )
+            } else {
+                items(filtered, key = { it.anilistId }) { entry ->
+                    AnimeCard(
+                        entry = entry,
+                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
+                        showSyncPending = true,
+                        showRelativeTimestamp = true,
+                        showFavorite = true,
+                    )
+                }
             }
         }
     }

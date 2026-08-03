@@ -26,7 +26,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -195,35 +194,6 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
             color = TextSecondary,
             textAlign = TextAlign.Center,
         )
-
-        Spacer(Modifier.height(12.dp))
-
-        // Score scale toggle — picks how personalScore and community/personal
-        // means render across the app. The DataStore value is shared with
-        // DetailScreen and any future score surface through TokenStore.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilterChip(
-                selected = scoreScale == ScoreScale.OUT_OF_10,
-                onClick = {
-                    scope.launch {
-                        app.tokenStore.setScoreScale(ScoreScale.OUT_OF_10)
-                    }
-                },
-                label = { Text("Out of 10") },
-            )
-            FilterChip(
-                selected = scoreScale == ScoreScale.OUT_OF_100,
-                onClick = {
-                    scope.launch {
-                        app.tokenStore.setScoreScale(ScoreScale.OUT_OF_100)
-                    }
-                },
-                label = { Text("Out of 100") },
-            )
-        }
 
         Spacer(Modifier.height(20.dp))
 

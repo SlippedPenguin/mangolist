@@ -20,6 +20,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,8 +93,15 @@ fun TiersScreen(navController: NavController) {
         dao.observeByTier(tier).collectAsState(initial = emptyList())
     }
     val unranked by dao.observeUnranked().collectAsState(initial = emptyList())
+    val allEntries by dao.observeAll().collectAsState(initial = emptyList())
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId      by app.tokenStore.userId.collectAsState(initial = null)
+
+    // v1.5.1: count titles that have a personal score but no tier yet —
+    // that's what the "Rank from my ratings" button can seed in one tap.
+    val scoredUnranked = remember(allEntries) {
+        allEntries.count { it.tier == null && (it.personalScore ?: 0) > 0 }
+    }
 
     var isRefreshing by remember { mutableStateOf(false) }
     var longPressEntry by remember { mutableStateOf<AnimeEntry?>(null) }
@@ -140,6 +150,37 @@ fun TiersScreen(navController: NavController) {
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                item(key = "tier_intro") {
+                    TierIntroCard(
+                        scoredUnranked = scoredUnranked,
+                        onAutoRank = {
+                            scope.launch {
+                                val scorable = dao.getAll()
+                                    .filter { it.tier == null && (it.personalScore ?: 0) > 0 }
+                                if (scorable.isEmpty()) return@launch
+                                scorable.forEach { e ->
+                                    val score = e.personalScore
+                                    // v1.5.1: deliberately DON'T bump updatedAt —
+                                    // tier/elo are local-only (never uploaded), so
+                                    // touching updatedAt would flag every ranked
+                                    // title as "pending sync" and trigger a wave
+                                    // of no-op pushes to AniList.
+                                    dao.update(
+                                        e.copy(
+                                            tier = EloEngine.tierForScore(score),
+                                            elo = EloEngine.eloForScore(score),
+                                        )
+                                    )
+                                }
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Ranked ${scorable.size} titles from your ratings",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            }
+                        },
+                    )
+                }
                 EloEngine.TIERS.forEach { tier ->
                     val entries = byTier[tier]?.value ?: emptyList()
                     item(key = "header_$tier") {
@@ -270,6 +311,54 @@ fun TiersScreen(navController: NavController) {
                 ) {
                     Text("Cancel", color = TextSecondary)
                 }
+            }
+        }
+    }
+}
+
+/*
+ * TierIntroCard — v1.5.1. Explains how tiers persist (private, on-device
+ * only — never pushed to AniList) and offers the one-tap "Rank from my
+ * ratings" seed that maps each title's existing personalScore onto the
+ * S/A/B/C/D ladder. Answers "how will it save into the app?": tier + elo
+ * live in the local Room row, so they survive sync and restarts, but stay
+ * invisible to AniList.
+ */
+@Composable
+private fun TierIntroCard(scoredUnranked: Int, onAutoRank: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Your tiers save only on this device",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Tier + Elo live in your local list and are never uploaded to AniList. " +
+                    if (scoredUnranked > 0) "You have $scoredUnranked rated titles waiting for a tier."
+                    else "Rate titles on their Detail screen, then rank them here in one tap.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onAutoRank,
+                enabled = scoredUnranked > 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (scoredUnranked > 0) "Rank $scoredUnranked from my ratings"
+                           else "No rated titles yet",
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
         }
     }

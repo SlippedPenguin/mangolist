@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.0)
-> **Working tree:** v1.5.0 Anihyou-style UI polish on top of the stable v1.4.11 sync: refined dark theme (surface-container ladder, hairline borders, depth without shadows), expanded typography scale, card/pill/badge polish, animated bottom-nav (icon scale + tint, pill indicator), NavHost fade + slide transitions
-> **Deprecated releases:** v1.5.1–v1.5.4 are retained for history but should not be installed; the old broken v1.5.0 tag was repointed to this stable UI-polish build.
+> **Latest documented release:** [v1.5.1](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.1)
+> **Working tree:** v1.5.1 UI/UX hardening on top of v1.5.0: guaranteed cover placeholders (CoverImage — no more blank "showing nothing" manga cards), tierlist one-tap "Rank from my ratings" seed from existing personal scores + on-device-only save note, removed the Profile out-of-10/out-of-100 toggle, crossfaded Detail hero background swap + faded loading veil, and a pinned filter island (no scrolling back up to switch All/Watching/Completed) with zero-count status chips hidden
+> **Deprecated releases:** v1.5.2–v1.5.4 are retained for history but should not be installed; the old broken v1.5.0/v1.5.1 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening).
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 

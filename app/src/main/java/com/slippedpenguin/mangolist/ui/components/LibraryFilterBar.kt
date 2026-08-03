@@ -32,12 +32,19 @@ fun LibraryFilterBar(
     onSelect: (String?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // v1.5.1: declutter — "All" always shows; status chips with zero
+    // entries are hidden (plus the currently-selected chip is kept so a
+    // selection never vanishes mid-session). The island reads as a short,
+    // relevant list instead of seven always-on buttons.
+    val visibleFilters = libraryFilters.filter { filter ->
+        filter.key == null || (counts[filter.key] ?: 0) > 0 || selectedStatus == filter.key
+    }
     LazyRow(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(libraryFilters, key = { it.label }) { filter ->
+        items(visibleFilters, key = { it.label }) { filter ->
             FilterChip(
                 selected = selectedStatus == filter.key,
                 onClick = { onSelect(filter.key) },

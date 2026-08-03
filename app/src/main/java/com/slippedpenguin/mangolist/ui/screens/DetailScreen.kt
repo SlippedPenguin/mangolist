@@ -1,5 +1,10 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -72,6 +77,7 @@ import com.slippedpenguin.mangolist.data.ScoreDisplay
 import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.local.AnimeDao
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.CoverImage
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.components.StatusPill
 import com.slippedpenguin.mangolist.ui.theme.Accent
@@ -301,7 +307,13 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
             )
         }
 
-        if (!detailsLoaded && details == null) {
+        // v1.5.1: fade the loading veil in/out instead of popping it —
+        // the instant black overlay was half of the jarring transition.
+        AnimatedVisibility(
+            visible = !detailsLoaded && details == null,
+            enter = fadeIn(animationSpec = tween(200)),
+            exit = fadeOut(animationSpec = tween(250)),
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -396,6 +408,13 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
 
 /* ------------------------------------------------------------------ *\
  *  Hero — banner image with a cover overlay + bottom gradient fade    *
+ *
+ *  v1.5.1: the whole hero image is wrapped in a Crossfade keyed on the
+ *  resolved URL. Previously the hero started on the poster cover and then
+ *  *snapped* to the banner image the moment GetMediaDetails landed — the
+ *  "background photo changes jarringly" bug. Now it eases between states
+ *  over ~350ms, and missing images fall back to a tier-tinted letter tile
+ *  instead of a blank black box.
 \* ------------------------------------------------------------------ */
 @Composable
 private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
@@ -404,19 +423,29 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
         val hex = details?.coverColor ?: entry?.coverColor ?: return@remember null
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
     }
+    val heroLabel = details?.titleEnglish?.takeIf { it.isNotBlank() }
+        ?: details?.titleRomaji?.takeIf { it.isNotBlank() }
+        ?: entry?.title
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(280.dp)
             .background(fallbackColor ?: BgDeep),
     ) {
-        if (bannerUrl != null) {
-            AsyncImage(
-                model = bannerUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+        Crossfade(
+            targetState = bannerUrl,
+            animationSpec = tween(durationMillis = 350),
+            label = "heroBannerCrossfade",
+        ) { url ->
+            if (url != null) {
+                CoverImage(
+                    model = url,
+                    contentDescription = null,
+                    tint = fallbackColor ?: BgDeep,
+                    label = heroLabel,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -437,12 +466,21 @@ private fun HeroSection(details: MediaDetails?, entry: AnimeEntry?) {
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surface),
         ) {
-            AsyncImage(
-                model = details?.coverLarge ?: entry?.cover,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            Crossfade(
+                targetState = details?.coverLarge ?: entry?.cover,
+                animationSpec = tween(durationMillis = 350),
+                label = "heroCoverCrossfade",
+            ) { url ->
+                if (url != null) {
+                    CoverImage(
+                        model = url,
+                        contentDescription = null,
+                        tint = fallbackColor ?: BgDeep,
+                        label = heroLabel,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }

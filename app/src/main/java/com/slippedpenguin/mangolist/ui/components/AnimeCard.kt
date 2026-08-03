@@ -3,10 +3,8 @@ package com.slippedpenguin.mangolist.ui.components
 import android.text.format.DateUtils
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -27,11 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
@@ -104,21 +100,19 @@ fun AnimeCard(
                 .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Poster — falls back to a tier-tinted block if the URL is missing or fails to load.
-            Box(
+            // Poster — CoverImage renders a tier-tinted letter placeholder
+            // when the URL is missing or fails to load, so a broken cover
+            // never leaves a blank dark box (the "manga cards show nothing"
+            // bug was this: data fine, fallback absent).
+            CoverImage(
+                model = entry.cover,
+                contentDescription = entry.title,
+                tint = tierColor(entry.tier).copy(alpha = 0.35f),
+                label = entry.title,
                 modifier = Modifier
                     .size(width = 56.dp, height = 80.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(tierColor(entry.tier).copy(alpha = 0.3f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = entry.cover,
-                    contentDescription = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+                    .clip(RoundedCornerShape(12.dp)),
+            )
 
             Column(
                 modifier = Modifier
