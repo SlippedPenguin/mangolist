@@ -1,6 +1,8 @@
 package com.slippedpenguin.mangolist.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -35,8 +37,9 @@ fun EloBadge(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(tierColor(tier).copy(alpha = 0.22f))
+            .clip(RoundedCornerShape(10.dp))
+            .background(tierColor(tier).copy(alpha = 0.14f))
+            .border(1.dp, tierColor(tier).copy(alpha = 0.45f), RoundedCornerShape(10.dp))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {

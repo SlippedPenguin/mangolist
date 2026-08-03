@@ -1,5 +1,6 @@
 package com.slippedpenguin.mangolist.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 
@@ -63,12 +65,15 @@ fun AnimePosterCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .clickable { onClick() },
-            shape = RoundedCornerShape(10.dp),
+            shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             ),
+            // v1.5.0: hairline border keeps poster tiles crisp on the
+            // dark Explore carousels (Anihyou-style flat surfaces).
+            border = BorderStroke(1.dp, BorderSubtle),
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Tier-tinted fallback if the cover URL is missing or the

@@ -1,6 +1,7 @@
 package com.slippedpenguin.mangolist.ui.components
 
 import android.text.format.DateUtils
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.theme.Accent
+import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.tierColor
@@ -85,21 +87,28 @@ fun AnimeCard(
                 onLongClick = onLongClick,
             ),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
-        shape = RoundedCornerShape(12.dp),
+        // v1.5.0: subtle hairline border + shadow-less depth (Anihyou-style
+        // cards read as layered surfaces, not raised shadows).
+        border = BorderStroke(1.dp, BorderSubtle),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 0.dp,
+            pressedElevation = 2.dp,
+        ),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(10.dp),
+                .padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Poster — falls back to a tier-tinted block if the URL is missing or fails to load.
             Box(
                 modifier = Modifier
                     .size(width = 56.dp, height = 80.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(tierColor(entry.tier).copy(alpha = 0.3f)),
                 contentAlignment = Alignment.Center,
             ) {

@@ -13,8 +13,18 @@ val BgCard        = Color(0xFF14141f)
 val BgCardHover   = Color(0xFF1c1c2e)
 val BgInput       = Color(0xFF15151f)
 
+// v1.5.0: Material-3 surface-container ladder. Layering these gives the
+// depth Anihyou-style dark UIs have — nav bar, cards, and sheets sit on
+// progressively lighter tones instead of one flat surface color.
+val SurfaceContainerLowest  = Color(0xFF0b0b16)
+val SurfaceContainerLow     = Color(0xFF10101c)
+val SurfaceContainer        = Color(0xFF161624)
+val SurfaceContainerHigh    = Color(0xFF1c1c2c)
+val SurfaceContainerHighest = Color(0xFF222235)
+
 val Border        = Color(0xFF25253a)
 val BorderStrong  = Color(0xFF353550)
+val BorderSubtle  = Color(0xFF1e1e30)
 
 val TextPrimary   = Color(0xFFe8e8f0)
 val TextSecondary = Color(0xFF8a8aa3)
