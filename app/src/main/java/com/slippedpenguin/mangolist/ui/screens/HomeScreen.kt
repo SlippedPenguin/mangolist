@@ -43,7 +43,6 @@ import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BgCardHover
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
-import com.slippedpenguin.mangolist.ui.theme.tierColor
 
 /**
  * Home dashboard: a quick read of the library, active titles, recent changes,
@@ -94,7 +93,6 @@ fun HomeScreen(navController: NavController) {
         // reachable without scrolling past every active title.
         item {
             TierShortcut(
-                rankedCount = rankedCount,
                 onClick = { navController.navigate("tiers") },
             )
         }
@@ -238,13 +236,15 @@ private fun SectionHeading(kicker: String, title: String) {
 }
 
 @Composable
-private fun TierShortcut(rankedCount: Int, onClick: () -> Unit) {
+private fun TierShortcut(onClick: () -> Unit) {
     Card(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = BgCardHover),
         shape = RoundedCornerShape(18.dp),
     ) {
+        // v1.5.4: single-line shortcut — no subtitle, and the icon uses the
+        // periwinkle Accent instead of the S-tier pink/red.
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -253,20 +253,19 @@ private fun TierShortcut(rankedCount: Int, onClick: () -> Unit) {
                 modifier = Modifier
                     .size(44.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(tierColor("S").copy(alpha = 0.18f)),
+                    .background(Accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(Icons.Outlined.Tune, contentDescription = null, tint = tierColor("S"))
+                Icon(Icons.Outlined.Tune, contentDescription = null, tint = Accent)
             }
-            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                Text("Build your tier list", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    if (rankedCount == 0) "Rank your favorites from S to D."
-                    else "$rankedCount titles ranked so far.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                )
-            }
+            Text(
+                text = "Build your tier list",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+            )
             Text("Open", color = Accent, style = MaterialTheme.typography.labelLarge)
         }
     }

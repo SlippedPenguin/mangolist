@@ -28,6 +28,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -35,9 +37,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -157,253 +161,291 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
 
     val stats = remember(entries) { computeLocalStats(entries) }
 
+    // v1.5.4: AniHyou-style tabbed profile — identity + account actions in
+    // Overview, breakdowns in Stats, and the sync debugger hidden inside
+    // Settings instead of squatting on every scroll.
+    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val profileTabs = listOf("Overview", "Stats", "Settings")
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = { if (!isRefreshing) isRefreshing = true },
         modifier = Modifier.fillMaxSize(),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             OfflineBanner()
-        // Avatar + greeting
-        AsyncImage(
-            model = avatarUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = if (userName == null) "Not signed in" else "Hi, $userName",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "${entries.size} entries in your local list",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(Modifier.height(20.dp))
-
-        // Core stats card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ScrollableTabRow(
+                selectedTabIndex = selectedTab,
+                edgePadding = 16.dp,
             ) {
-                StatRow(
-                    label = "Episodes watched",
-                    value = stats.episodesWatched.toString(),
-                )
-                StatRow(
-                    label = "Days watched",
-                    value = formatDays(stats.daysWatched),
-                    hint = "based on format-aware duration estimates",
-                )
-                StatRow(
-                    label = "Community mean score",
-                    value = formatMean(stats.communityMean, scoreScale),
-                    hint = if (stats.communityMean == null) "Add some anime to see your mean."
-                           else "AniList community avg",
-                )
-                StatRow(
-                    label = "Your mean score",
-                    value = formatMean(stats.personalMean, scoreScale),
-                    hint = if (stats.personalMean == null) "Rate your anime to see your mean."
-                           else "your personal avg",
-                )
+                profileTabs.forEachIndexed { index, label ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = {
+                            Text(
+                                text = label,
+                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
+                            )
+                        },
+                    )
+                }
             }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // AniList viewer stats card
-        if (viewer != null || viewerLoading) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+            when (selectedTab) {
+                0 -> Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
+                    // Avatar + greeting
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                    )
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "AniList stats",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TextSecondary,
+                        text = if (userName == null) "Not signed in" else "Hi, $userName",
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    if (viewerLoading) {
-                        Text(
-                            text = "Loading…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${entries.size} entries in your local list",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+
+                    // Account actions live in Overview.
+                    if (userName == null) {
+                        Button(
+                            onClick = {
+                                val intent = CustomTabsIntent.Builder().build()
+                                intent.launchUrl(context, Uri.parse(buildAniListAuthorizeUrl()))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Log in with AniList") }
                     } else {
-                        viewer?.let { v ->
-                            StatRow(
-                                label = "Anime count",
-                                value = v.animeCount?.toString() ?: "—",
-                            )
-                            StatRow(
-                                label = "Mean score",
-                                value = v.animeMeanScore?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
-                            )
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    val token = accessToken
+                                    val id = userId
+                                    if (token.isNullOrBlank() || id.isNullOrBlank()) {
+                                        Toast.makeText(context, "Not signed in", Toast.LENGTH_SHORT).show()
+                                        return@launch
+                                    }
+                                    Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
+                                    val (animeResult, mangaResult) = awaitAll(
+                                        async { app.anilistClient.syncUserList(token, id.toInt(), "ANIME") },
+                                        async { app.anilistClient.syncUserList(token, id.toInt(), "MANGA") },
+                                    )
+                                    SyncDiagnostics.summarizePull(animeResult, mangaResult)
+                                    val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
+                                    if (combined.isNotEmpty()) {
+                                        app.database.animeDao().mergePullResults(combined)
+                                        Toast.makeText(context, "Synced ${combined.size} entries", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        val raw = animeResult.error ?: mangaResult.error ?: "Sync failed"
+                                        val msg = if (raw.length > 150) raw.take(150) + "…" else raw
+                                        Toast.makeText(context, "Sync failed: $msg", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Sync now") }
+                        Spacer(Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    app.tokenStore.clear()
+                                    Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Sign out", color = StatusDropped) }
+                    }
+                }
+                1 -> Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // Core stats card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
                             StatRow(
                                 label = "Episodes watched",
-                                value = v.episodesWatched?.toString() ?: "—",
+                                value = stats.episodesWatched.toString(),
                             )
                             StatRow(
                                 label = "Days watched",
-                                value = v.minutesWatched?.let { String.format(Locale.US, "%.1f", it / 1440.0) } ?: "—",
+                                value = formatDays(stats.daysWatched),
+                                hint = "based on format-aware duration estimates",
+                            )
+                            StatRow(
+                                label = "Community mean score",
+                                value = formatMean(stats.communityMean, scoreScale),
+                                hint = if (stats.communityMean == null) "Add some anime to see your mean."
+                                       else "AniList community avg",
+                            )
+                            StatRow(
+                                label = "Your mean score",
+                                value = formatMean(stats.personalMean, scoreScale),
+                                hint = if (stats.personalMean == null) "Rate your anime to see your mean."
+                                       else "your personal avg",
                             )
                         }
                     }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
 
-        // v1.5.3: the per-status breakdown is gone — the Anime/Manga
-        // watchlist filter island is the single source of status counts.
-        // Profile keeps tier / genre / format / year distribution.
+                    Spacer(Modifier.height(16.dp))
 
-        // Tier breakdown
-        if (stats.tierCounts.isNotEmpty()) {
-            BreakdownCard(title = "By tier") {
-                Column {
-                    for ((tier, count) in stats.tierCounts) {
-                        BreakdownRow(
-                            label = tier ?: "Unranked",
-                            count = count,
-                            color = tierColor(tier),
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        // Genre distribution (top 8)
-        if (stats.genreCounts.isNotEmpty()) {
-            BreakdownCard(title = "Top genres") {
-                Column {
-                    for ((genre, count) in stats.genreCounts.take(8)) {
-                        BreakdownRow(
-                            label = genre,
-                            count = count,
-                            color = StatusWatching,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        // Format distribution
-        if (stats.formatCounts.isNotEmpty()) {
-            BreakdownCard(title = "By format") {
-                Column {
-                    for ((fmt, count) in stats.formatCounts) {
-                        BreakdownRow(
-                            label = fmt.ifBlank { "Unknown" },
-                            count = count,
-                            color = StatusPlan,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        // Year distribution (top 8)
-        if (stats.yearCounts.isNotEmpty()) {
-            BreakdownCard(title = "By year") {
-                Column {
-                    for ((year, count) in stats.yearCounts.take(8)) {
-                        BreakdownRow(
-                            label = year?.toString() ?: "TBA",
-                            count = count,
-                            color = StatusDropped,
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        if (userName == null) {
-            Button(
-                onClick = {
-                    val intent = CustomTabsIntent.Builder().build()
-                    intent.launchUrl(context, Uri.parse(buildAniListAuthorizeUrl()))
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Log in with AniList") }
-        } else {
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        val token = accessToken
-                        val id = userId
-                        if (token.isNullOrBlank() || id.isNullOrBlank()) {
-                            Toast.makeText(context, "Not signed in", Toast.LENGTH_SHORT).show()
-                            return@launch
+                    // AniList viewer stats card
+                    if (viewer != null || viewerLoading) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Text(
+                                    text = "AniList stats",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = TextSecondary,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                if (viewerLoading) {
+                                    Text(
+                                        text = "Loading…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextSecondary,
+                                    )
+                                } else {
+                                    viewer?.let { v ->
+                                        StatRow(
+                                            label = "Anime count",
+                                            value = v.animeCount?.toString() ?: "—",
+                                        )
+                                        StatRow(
+                                            label = "Mean score",
+                                            value = v.animeMeanScore?.let { String.format(Locale.US, "%.1f", it) } ?: "—",
+                                        )
+                                        StatRow(
+                                            label = "Episodes watched",
+                                            value = v.episodesWatched?.toString() ?: "—",
+                                        )
+                                        StatRow(
+                                            label = "Days watched",
+                                            value = v.minutesWatched?.let { String.format(Locale.US, "%.1f", it / 1440.0) } ?: "—",
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        Toast.makeText(context, "Syncing...", Toast.LENGTH_SHORT).show()
-                        // v1.3: sync both ANIME and MANGA lists from the
-                        // Profile "Sync now" button so manga entries aren't
-                        // left behind. Run the two calls in parallel.
-                        val (animeResult, mangaResult) = awaitAll(
-                            async { app.anilistClient.syncUserList(token, id.toInt(), "ANIME") },
-                            async { app.anilistClient.syncUserList(token, id.toInt(), "MANGA") },
-                        )
-                        SyncDiagnostics.summarizePull(animeResult, mangaResult)
-                        val combined = (animeResult.entries.orEmpty() + mangaResult.entries.orEmpty())
-                        if (combined.isNotEmpty()) {
-                            app.database.animeDao().mergePullResults(combined)
-                            Toast.makeText(context, "Synced ${combined.size} entries", Toast.LENGTH_SHORT).show()
-                        } else {
-                            val raw = animeResult.error ?: mangaResult.error ?: "Sync failed"
-                            val msg = if (raw.length > 150) raw.take(150) + "…" else raw
-                            Toast.makeText(context, "Sync failed: $msg", Toast.LENGTH_LONG).show()
-                        }
+                        Spacer(Modifier.height(16.dp))
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sync now") }
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        app.tokenStore.clear()
-                        Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Sign out", color = StatusDropped) }
-            }
 
-            Spacer(Modifier.height(16.dp))
-            DiagnosticsCard()
+                    // v1.5.3: the per-status breakdown is gone — the Anime/Manga
+                    // watchlist filter island is the single source of status counts.
+                    // Profile keeps tier / genre / format / year distribution.
+
+                    // Tier breakdown
+                    if (stats.tierCounts.isNotEmpty()) {
+                        BreakdownCard(title = "By tier") {
+                            Column {
+                                for ((tier, count) in stats.tierCounts) {
+                                    BreakdownRow(
+                                        label = tier ?: "Unranked",
+                                        count = count,
+                                        color = tierColor(tier),
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    // Genre distribution (top 8)
+                    if (stats.genreCounts.isNotEmpty()) {
+                        BreakdownCard(title = "Top genres") {
+                            Column {
+                                for ((genre, count) in stats.genreCounts.take(8)) {
+                                    BreakdownRow(
+                                        label = genre,
+                                        count = count,
+                                        color = StatusWatching,
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    // Format distribution
+                    if (stats.formatCounts.isNotEmpty()) {
+                        BreakdownCard(title = "By format") {
+                            Column {
+                                for ((fmt, count) in stats.formatCounts) {
+                                    BreakdownRow(
+                                        label = fmt.ifBlank { "Unknown" },
+                                        count = count,
+                                        color = StatusPlan,
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    // Year distribution (top 8)
+                    if (stats.yearCounts.isNotEmpty()) {
+                        BreakdownCard(title = "By year") {
+                            Column {
+                                for ((year, count) in stats.yearCounts.take(8)) {
+                                    BreakdownRow(
+                                        label = year?.toString() ?: "TBA",
+                                        count = count,
+                                        color = StatusDropped,
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                }
+                2 -> Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    // v1.5.4: the sync debugger lives in Settings, out of the way.
+                    DiagnosticsCard()
+                }
+            }
         }
     }
 }
@@ -418,7 +460,6 @@ private data class LocalStats(
     val daysWatched: Double,
     val communityMean: Double?,
     val personalMean: Double?,
-    val statusCounts: List<Pair<String, Int>>,
     val tierCounts:   List<Pair<String?, Int>>,
     val genreCounts:  List<Pair<String, Int>>,
     val formatCounts: List<Pair<String, Int>>,
@@ -427,7 +468,7 @@ private data class LocalStats(
 
 private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
     if (entries.isEmpty()) {
-        return LocalStats(0, 0, 0.0, null, null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+        return LocalStats(0, 0, 0.0, null, null, emptyList(), emptyList(), emptyList(), emptyList())
     }
     val episodesWatched = entries.sumOf { it.currentEp }
     val minutesWatched  = entries.sumOf { it.currentEp * defaultDurationMinutes(it.format) }
@@ -440,11 +481,6 @@ private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
 
     val personalScores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
     val personalMean = if (personalScores.isNotEmpty()) personalScores.average() else null
-
-    val statusCounts = entries.groupingBy { it.status }.eachCount()
-        .entries
-        .sortedByDescending { it.value }
-        .map { it.key to it.value }
 
     val tierOrder = listOf("S", "A", "B", "C", "D", null)
     val rawTier = entries.groupingBy { it.tier }.eachCount()
@@ -475,7 +511,6 @@ private fun computeLocalStats(entries: List<AnimeEntry>): LocalStats {
         daysWatched     = daysWatched,
         communityMean   = communityMean,
         personalMean    = personalMean,
-        statusCounts    = statusCounts,
         tierCounts      = tierCounts,
         genreCounts     = genreCounts,
         formatCounts    = formatCounts,

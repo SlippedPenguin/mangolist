@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.3](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.3)
-> **Working tree:** v1.5.3 AniHyou polish pass on top of v1.5.2: (1) status filter collapsed behind a corner button on the Anime/Manga watchlists (tap to expand the All/Watching/Completed chips, tap again to collapse) — no more permanent chip row squatting above the list. (2) Manga-aware status naming: manga reads "Reading"/"Rereading" instead of "Watching"/"Repeating" everywhere (filter chips + StatusPill). (3) Profile's duplicate "By status" breakdown removed — the watchlist filter island is the single status-count surface now. (4) Color tokens retuned to AniHyou's Material-You dark palette: periwinkle primary #BAC3FF (was pink), neutral #1B1B1F base, retuned surface ladder + borders + text neutrals for the polished reference-client look.
-> **Deprecated releases:** v1.5.4 is retained for history but should not be installed; the old broken v1.5.0–v1.5.3 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes, v1.5.3 = AniHyou polish pass).
+> **Latest documented release:** [v1.5.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.4)
+> **Working tree:** v1.5.4 on top of v1.5.3: (1) Home tier shortcut cleaned up — the icon box now uses the periwinkle Accent (was S-tier pink/red) and the subtitle text under "Build your tier list" is gone, leaving a single-line card. (2) Profile restructured into AniHyou-style tabs — Overview (avatar, greeting, entry count, sign-in/sync/sign-out) / Stats (core stats, AniList viewer stats, tier/genre/format/year breakdowns) / Settings (sync diagnostics only). The long single-scroll stats wall is gone. (3) The sync diagnostics card now lives only inside the Settings tab, hidden away instead of squatting at the bottom of every Profile scroll. (4) Dead statusCounts aggregation removed from LocalStats.
+> **Deprecated releases:** none — all previous broken v1.5.0–v1.5.4 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes, v1.5.3 = AniHyou polish pass, v1.5.4 = tabbed profile + tier shortcut cleanup).
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 
