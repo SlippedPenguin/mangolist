@@ -2,6 +2,7 @@ package com.slippedpenguin.mangolist
 
 import android.app.Application
 import com.slippedpenguin.mangolist.data.AniListClient
+import com.slippedpenguin.mangolist.data.SyncDiagnostics
 import com.slippedpenguin.mangolist.data.TokenStore
 import com.slippedpenguin.mangolist.data.local.AnimeDatabase
 import com.slippedpenguin.mangolist.util.NetworkObserver
