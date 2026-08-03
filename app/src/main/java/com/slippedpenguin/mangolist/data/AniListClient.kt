@@ -16,6 +16,8 @@ import com.slippedpenguin.mangolist.graphql.SearchAnimeQuery
 import com.slippedpenguin.mangolist.util.NetworkObserver
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -690,6 +692,28 @@ class AniListClient(
         }
     }
 
+    /*
+     * JsonNull-safe JSON accessors. kotlinx.serialization represents JSON
+     * null as `JsonNull`, which extends `JsonPrimitive` — so `as?
+     * JsonPrimitive` SUCCEEDS on null values, and the `.int`/`.long`/
+     * `.double` extensions then throw NumberFormatException ("Unexpected
+     * symbol 'n' in numeric literal"). Anime rows carry `chapters: null`
+     * and `volumes: null`, manga rows carry `episodes: null`, so this was
+     * throwing on EVERY synced entry and silently collapsing pulls to 0
+     * rows. These helpers treat JsonNull as absent.
+     */
+    private fun JsonElement?.numInt(): Int? =
+        (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.int
+
+    private fun JsonElement?.numLong(): Long? =
+        (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.long
+
+    private fun JsonElement?.numDouble(): Double? =
+        (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.double
+
+    private fun JsonElement?.numString(): String? =
+        (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content
+
     private fun parseMediaListEntry(entry: JsonObject, mediaType: String, nowMillis: Long): AnimeEntry? {
         return try {
             parseMediaListEntrySafe(entry, mediaType, nowMillis)
@@ -715,10 +739,10 @@ class AniListClient(
 
         // Prefer the type AniList returned on the response; fall back to
         // the caller's requested mediaType parameter.
-        val serverType = (media["type"] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val serverType = media["type"].numString()
         val resolvedType = serverType ?: mediaType
 
-        val localStatus = when ((entry["status"] as? kotlinx.serialization.json.JsonPrimitive)?.content) {
+        val localStatus = when (entry["status"].numString()) {
             "CURRENT"   -> "watching"
             "PLANNING"  -> "plan"
             "COMPLETED" -> "completed"
@@ -728,10 +752,10 @@ class AniListClient(
             else        -> "watching"
         }
 
-        val updatedAt = (entry["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
+        val updatedAt = entry["updatedAt"].numLong()
         val editTime = updatedAt?.let { it * 1000L } ?: nowMillis
 
-        val score = (entry["score"] as? kotlinx.serialization.json.JsonPrimitive)?.double
+        val score = entry["score"].numDouble()
 
         // v1.3: round-trip AniList's 0.0-10.0 Float score to the app's
         // internal 0-100 Int. Use roundToInt() so floating-point noise
@@ -740,24 +764,24 @@ class AniListClient(
 
         // v1.4.1: keep anime/manga progress totals in their own columns
         // so the UI can show the right unit (ep/ch/vol) and cap.
-        val episodesCount  = (media["episodes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
-        val chaptersCount  = (media["chapters"] as? kotlinx.serialization.json.JsonPrimitive)?.int
-        val volumesCount   = (media["volumes"] as? kotlinx.serialization.json.JsonPrimitive)?.int
+        val episodesCount  = media["episodes"].numInt()
+        val chaptersCount  = media["chapters"].numInt()
+        val volumesCount   = media["volumes"].numInt()
 
         return AnimeEntry(
-            anilistId     = (media["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return null,
-            title         = (title?.get("english") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: (title?.get("romaji") as? kotlinx.serialization.json.JsonPrimitive)?.content
+            anilistId     = media["id"].numInt() ?: return null,
+            title         = title?.get("english").numString()
+                ?: title?.get("romaji").numString()
                 ?: "Untitled",
-            cover         = (coverImage?.get("large") as? kotlinx.serialization.json.JsonPrimitive)?.content
-                ?: (coverImage?.get("medium") as? kotlinx.serialization.json.JsonPrimitive)?.content,
-            coverColor    = (coverImage?.get("color") as? kotlinx.serialization.json.JsonPrimitive)?.content,
-            format        = (media["format"] as? kotlinx.serialization.json.JsonPrimitive)?.content,
+            cover         = coverImage?.get("large").numString()
+                ?: coverImage?.get("medium").numString(),
+            coverColor    = coverImage?.get("color").numString(),
+            format        = media["format"].numString(),
             episodes      = if (resolvedType == "ANIME") episodesCount else null,
             chapters      = if (resolvedType == "MANGA") chaptersCount else null,
             volumes       = if (resolvedType == "MANGA") volumesCount else null,
-            averageScore  = (media["averageScore"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
-            year          = (startDate?.get("year") as? kotlinx.serialization.json.JsonPrimitive)?.int,
+            averageScore  = media["averageScore"].numInt(),
+            year          = startDate?.get("year").numInt(),
             synopsis      = null,
             genres        = (media["genres"] as? kotlinx.serialization.json.JsonArray)
                 ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
@@ -766,12 +790,12 @@ class AniListClient(
             mediaType     = resolvedType,
             tier          = null,
             elo           = 1500,
-            currentEp     = (entry["progress"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: 0,
+            currentEp     = entry["progress"].numInt() ?: 0,
             status        = localStatus,
-            notes         = (entry["notes"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: "",
+            notes         = entry["notes"].numString() ?: "",
             personalScore = personalScore,
             favourite     = (media["isFavourite"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull ?: false,
-            listEntryId   = (entry["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int,
+            listEntryId   = entry["id"].numInt(),
             updatedAt     = editTime,
             syncedAt      = editTime,
         )
@@ -883,7 +907,7 @@ class AniListClient(
                     }
                     val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
                     val root = json.parseToJsonElement(responseBody).jsonObject
-                    root["access_token"]?.jsonPrimitive?.content
+                    root["access_token"].numString()
                 }  // withContext
             } catch (e: Exception) {
                 android.util.Log.w("AniListClient", "exchangeCodeForToken failed", e)
@@ -981,8 +1005,8 @@ class AniListClient(
                         android.util.Log.w("AniListClient", "saveEntry response has no data.SaveMediaListEntry: ${responseBody.take(400)}")
                         return@withContext null
                     }
-                    val id = (saveNode["id"] as? kotlinx.serialization.json.JsonPrimitive)?.int ?: return@withContext null
-                    val updatedAtSeconds = (saveNode["updatedAt"] as? kotlinx.serialization.json.JsonPrimitive)?.long
+                    val id = saveNode["id"].numInt() ?: return@withContext null
+                    val updatedAtSeconds = saveNode["updatedAt"].numLong()
                     val notesElement = saveNode["notes"]
                     val returnedNotes = when (notesElement) {
                         is kotlinx.serialization.json.JsonNull -> null
@@ -1137,18 +1161,18 @@ class AniListClient(
                             val next = m["nextAiringEpisode"] as? JsonObject ?: return@mapNotNull null
                             val title = m["title"] as? JsonObject
                             val cover = m["coverImage"] as? JsonObject
-                            val avgScore = (m["averageScore"] as? JsonPrimitive)?.int
-                            val status = (m["status"] as? JsonPrimitive)?.content
-                            val banner = (m["bannerImage"] as? JsonPrimitive)?.content
+                            val avgScore = m["averageScore"].numInt()
+                            val status = m["status"].numString()
+                            val banner = m["bannerImage"].numString()
                             AiringSlot(
-                                id = (next["id"] as? JsonPrimitive)?.int ?: return@mapNotNull null,
-                                airingAt = (next["airingAt"] as? JsonPrimitive)?.long ?: return@mapNotNull null,
-                                episode = (next["episode"] as? JsonPrimitive)?.int ?: 0,
-                                animeId = (m["id"] as? JsonPrimitive)?.int ?: return@mapNotNull null,
-                                title = (title?.get("english") as? JsonPrimitive)?.content
-                                    ?: (title?.get("romaji") as? JsonPrimitive)?.content
+                                id = next["id"].numInt() ?: return@mapNotNull null,
+                                airingAt = next["airingAt"].numLong() ?: return@mapNotNull null,
+                                episode = next["episode"].numInt() ?: 0,
+                                animeId = m["id"].numInt() ?: return@mapNotNull null,
+                                title = title?.get("english").numString()
+                                    ?: title?.get("romaji").numString()
                                     ?: "Untitled",
-                                coverLarge = (cover?.get("large") as? JsonPrimitive)?.content,
+                                coverLarge = cover?.get("large").numString(),
                                 averageScore = avgScore,
                                 anilistStatus = status,
                                 bannerImage = banner,
@@ -1215,16 +1239,16 @@ class AniListClient(
                         val media = obj["media"]?.jsonObject ?: return@mapNotNull null
                         val title = media["title"]?.jsonObject
                         AiringSlot(
-                            id = obj["id"]?.jsonPrimitive?.int ?: 0,
-                            airingAt = obj["airingAt"]?.jsonPrimitive?.long ?: 0,
-                            episode = obj["episode"]?.jsonPrimitive?.int ?: 0,
-                            animeId = media["id"]?.jsonPrimitive?.int ?: 0,
-                            title = title?.get("english")?.jsonPrimitive?.content
-                                ?: title?.get("romaji")?.jsonPrimitive?.content ?: "Untitled",
-                            coverLarge = media["coverImage"]?.jsonObject?.get("large")?.jsonPrimitive?.content,
-                            averageScore = (media["averageScore"] as? JsonPrimitive)?.int,
-                            anilistStatus = (media["status"] as? JsonPrimitive)?.content,
-                            bannerImage = (media["bannerImage"] as? JsonPrimitive)?.content,
+                            id = obj["id"].numInt() ?: 0,
+                            airingAt = obj["airingAt"].numLong() ?: 0,
+                            episode = obj["episode"].numInt() ?: 0,
+                            animeId = media["id"].numInt() ?: 0,
+                            title = title?.get("english").numString()
+                                ?: title?.get("romaji").numString() ?: "Untitled",
+                            coverLarge = media["coverImage"]?.jsonObject?.get("large").numString(),
+                            averageScore = media["averageScore"].numInt(),
+                            anilistStatus = media["status"].numString(),
+                            bannerImage = media["bannerImage"].numString(),
                         )
                     }
                 }  // withContext

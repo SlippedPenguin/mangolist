@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.4.10](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.10)
-> **Working tree:** v1.4.10 diagnostics now log the raw AniList response (body preview, lists/entries counts, per-entry parse errors) to pinpoint the silent 0-entry sync bug
-> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.10.
+> **Latest documented release:** [v1.4.11](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.4.11)
+> **Working tree:** v1.4.11 fixes the silent 0-entry sync: JsonNull extends JsonPrimitive, so `as? JsonPrimitive)?.int` threw NumberFormatException on every null numeric field (chapters/volumes/episodes/score) and collapsed all pulls to 0 rows
+> **Deprecated releases:** v1.5.0–v1.5.4 are retained for history but should not be installed; they are superseded by v1.4.11.
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 
