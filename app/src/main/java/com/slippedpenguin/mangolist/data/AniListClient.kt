@@ -595,7 +595,13 @@ class AniListClient(
                     val collection = (root["data"] as? JsonObject)
                         ?.get("MediaListCollection")
                     if (collection == null || collection is kotlinx.serialization.json.JsonNull) {
-                        return@withContext SyncResult(emptyList(), null)
+                        // A missing collection is not the same as a confirmed
+                        // empty list. Treating it as empty would make a pull
+                        // reconcile delete every local row for this type when
+                        // AniList returns partial or unexpected data.
+                        val msg = "AniList returned no MediaListCollection for $type."
+                        android.util.Log.w("AniListClient", "syncUserList $msg")
+                        return@withContext SyncResult(null, msg)
                     }
                     val collObj = (collection as? JsonObject)
                         ?: run {
@@ -603,15 +609,18 @@ class AniListClient(
                             android.util.Log.w("AniListClient", "syncUserList $msg")
                             return@withContext SyncResult(null, msg)
                         }
+                    // Include every list (status lists AND custom lists).
+                    // An entry may appear in both a status list and a custom
+                    // list, so distinctBy deduplicates by media id.
                     val entries = (collObj["lists"] as? kotlinx.serialization.json.JsonArray)
                         ?.filterIsInstance<JsonObject>()
-                        ?.filter { (it["isCustomList"] as? kotlinx.serialization.json.JsonPrimitive)?.booleanOrNull != true }
                         ?.flatMap { list ->
                             (list["entries"] as? kotlinx.serialization.json.JsonArray)
                                 ?.filterIsInstance<JsonObject>()
                                 .orEmpty()
                         }
                         ?.mapNotNull { entry -> parseMediaListEntry(entry, type, nowMillis) }
+                        ?.distinctBy { it.anilistId }
                         .orEmpty()
                     SyncResult(entries, null)
                 }  // withContext
