@@ -5,12 +5,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,8 +66,8 @@ internal fun statusFilterLabel(status: String?, mediaType: String): String = whe
  *
  * v1.5.3 collapsed the category row behind a corner button; v1.5.5 centers
  * it: the collapsed state is a single centered pill (icon + current filter
- * + count) and the expanded category chips wrap centered instead of hugging
- * the left edge, so the top of the list always reads balanced.
+ * + count) and the expanded category chips wrap centered via FlowRow, so
+ * the top of the list always reads balanced.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -78,8 +78,6 @@ fun LibraryFilterBar(
     modifier: Modifier = Modifier,
     mediaType: String = "ANIME",
 ) {
-    // The bar opens collapsed; rememberSaveable keeps the open/closed
-    // state across config changes (rotation) but resets per screen visit.
     var expanded by rememberSaveable { mutableStateOf(false) }
 
     val visibleFilters = libraryFilterKeys.filter { key ->
@@ -124,8 +122,7 @@ fun LibraryFilterBar(
             }
         }
 
-        // v1.5.5: chips slide open/closed under the pill and wrap centered
-        // instead of hugging the left edge of a LazyRow.
+        // v1.5.5: chips slide open/closed under the pill and wrap centered.
         AnimatedVisibility(
             visible = expanded,
             enter = expandVertically(animationSpec = androidx.compose.animation.core.tween(180)) + fadeIn(),
@@ -152,4 +149,4 @@ fun LibraryFilterBar(
             }
         }
     }
-}
+}

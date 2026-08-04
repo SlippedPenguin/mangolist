@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.tierColor
