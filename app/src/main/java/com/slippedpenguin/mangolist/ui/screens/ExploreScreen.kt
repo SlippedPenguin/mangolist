@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,7 +99,7 @@ fun ExploreScreen(navController: NavController, forcedMediaType: String? = null)
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
 
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var mediaType by remember { mutableStateOf(forcedMediaType ?: "ANIME") }  // v1.4: lockable from parent tab
     var popular by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var trending by remember { mutableStateOf<List<AnimeEntry>?>(null) }
@@ -109,7 +110,7 @@ fun ExploreScreen(navController: NavController, forcedMediaType: String? = null)
     var searchResults by remember { mutableStateOf<List<AnimeEntry>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
     var inListIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    var selectedGenre by remember { mutableStateOf<String?>(null) }
+    var selectedGenre by rememberSaveable { mutableStateOf<String?>(null) }
     var genreResults by remember { mutableStateOf<List<AnimeEntry>?>(null) }
     var genreLoading by remember { mutableStateOf(false) }
     var requestSeq by remember { mutableStateOf(0) }

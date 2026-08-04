@@ -25,8 +25,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -36,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +49,7 @@ import coil.compose.AsyncImage
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.AiringSlot
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.CenteredPillTabs
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
@@ -99,7 +99,7 @@ fun AiringScreen(
     var loading     by remember { mutableStateOf(true) }
     var isRefreshing by remember { mutableStateOf(false) }
     var now by remember { mutableStateOf(System.currentTimeMillis() / 1000) }
-    var mode by remember { mutableStateOf(AiringMode.ON_MY_LIST) }
+    var mode by rememberSaveable { mutableStateOf(AiringMode.ON_MY_LIST) }
 
     // Auth state — drives whether the Sync button is visible. The user has
     // to be logged in to pull a fresh list from AniList.
@@ -255,26 +255,15 @@ fun AiringScreen(
             )
         }
 
-        TabRow(
-            selectedTabIndex = mode.ordinal,
-            containerColor = MaterialTheme.colorScheme.surface,
-        ) {
-            AiringMode.values().forEachIndexed { index, tabMode ->
-                Tab(
-                    selected = mode.ordinal == index,
-                    onClick = { mode = tabMode },
-                    text = {
-                        Text(
-                            text = when (tabMode) {
-                                AiringMode.ON_MY_LIST -> "On my list"
-                                AiringMode.ALL        -> "All airing"
-                            },
-                            fontWeight = if (mode.ordinal == index) FontWeight.Bold else FontWeight.Normal,
-                        )
-                    },
-                )
-            }
-        }
+        // v1.5.6: centered pill tabs (matches Anime/Manga sub-tab style).
+        CenteredPillTabs(
+            tabs = listOf(
+                "On my list",
+                "All airing",
+            ),
+            selectedIndex = mode.ordinal,
+            onSelect = { index -> mode = AiringMode.values()[index] },
+        )
 
         PullToRefreshBox(
             isRefreshing = isRefreshing,

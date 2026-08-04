@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -40,7 +43,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -201,34 +203,6 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
             }
         }
     }
-    val requestSync: () -> Unit = {
-        scope.launch {
-            val e = entry ?: return@launch
-            val tok = token
-            if (tok.isNullOrBlank()) {
-                syncFeedback = "Sign in on the Profile tab first." to true
-                return@launch
-            }
-            val result = app.anilistClient.saveEntry(tok, e)
-            if (result != null) {
-                val serverMillis = result.updatedAtSeconds?.let { it * 1000L } ?: System.currentTimeMillis()
-                val updatedRows = dao.markSyncedIfUnchanged(
-                    anilistId = e.anilistId,
-                    snapshotUpdatedAt = e.updatedAt,
-                    listEntryId = result.id,
-                    notes = result.notes ?: e.notes,
-                    serverMillis = serverMillis,
-                )
-                syncFeedback = if (updatedRows > 0) {
-                    "Synced to AniList" to false
-                } else {
-                    "Saved, but a newer edit is still pending" to false
-                }
-            } else {
-                syncFeedback = "Sync failed — try again." to true
-            }
-        }
-    }
 
     Box(
         modifier = Modifier
@@ -291,7 +265,6 @@ fun DetailScreen(navController: NavController, anilistId: Int, initialMediaType:
                     onScoreClick     = { showScorePicker = true },
                     onFavoriteToggle = toggleFavorite,
                     onAddToList      = addToList,
-                    onSync           = requestSync,
                 )
             }
             item { Spacer(Modifier.height(40.dp)) }
@@ -843,7 +816,6 @@ private fun TrackingCard(
     onScoreClick: () -> Unit,
     onFavoriteToggle: () -> Unit,
     onAddToList: () -> Unit,
-    onSync: () -> Unit,
 ) {
     Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)) {
         SectionHeader("Tracking")
@@ -970,45 +942,87 @@ private fun TrackingCard(
                 }
             },
         )
+        // v1.5.6: tier / notes / score are compact icon tiles in one row
+        // (the old full-width button stack). The "Sync to AniList" button is
+        // gone — every local edit enqueues SyncWorker, which auto-pushes
+        // dirty entries to AniList in the background, so the manual push
+        // was redundant.
         Spacer(Modifier.height(12.dp))
-        OutlinedButton(
-            onClick = onTierClick,
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                if (e.tier == null) "Add to tier" else "Change tier: ${e.tier}",
-                fontWeight = FontWeight.SemiBold,
+            TrackingActionTile(
+                icon = Icons.Outlined.EmojiEvents,
+                label = "Tier",
+                value = e.tier ?: "Unranked",
+                onClick = onTierClick,
+                modifier = Modifier.weight(1f),
+            )
+            TrackingActionTile(
+                icon = Icons.Outlined.Edit,
+                label = "Notes",
+                value = if (e.notes.isBlank()) "Add notes"
+                        else e.notes.take(14) + if (e.notes.length > 14) "…" else "",
+                onClick = onNotesClick,
+                modifier = Modifier.weight(1f),
+            )
+            TrackingActionTile(
+                icon = Icons.Outlined.StarBorder,
+                label = "Score",
+                value = ScoreDisplay.label(e.personalScore, scoreScale),
+                onClick = onScoreClick,
+                modifier = Modifier.weight(1f),
             )
         }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onNotesClick,
-            modifier = Modifier.fillMaxWidth(),
+    }
+}
+
+/*
+ * TrackingActionTile — v1.5.6. Compact icon + label + value action used
+ * on the Detail tracking card (tier / notes / score). One tap opens the
+ * matching dialog; the small value preview keeps the card skimmable.
+ */
+@Composable
+private fun TrackingActionTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            val label = when {
-                e.notes.isBlank() -> "Notes: Add notes"
-                e.notes.length <= 30 -> "Notes: ${e.notes}"
-                else -> "Notes: ${e.notes.take(30)}…"
-            }
-            Text(label, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            onClick = onScoreClick,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                text = ScoreDisplay.label(e.personalScore, scoreScale),
-                fontWeight = FontWeight.SemiBold,
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = Accent,
+                modifier = Modifier.size(20.dp),
             )
-        }
-        Spacer(Modifier.height(8.dp))
-        Button(
-            onClick = onSync,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Accent),
-        ) {
-            Text("Sync to AniList", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

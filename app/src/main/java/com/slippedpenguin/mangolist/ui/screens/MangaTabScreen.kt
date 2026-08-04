@@ -11,8 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -22,19 +20,22 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
-import com.slippedpenguin.mangolist.ui.components.LibraryFilterBar
+import com.slippedpenguin.mangolist.ui.components.CenteredPillTabs
+import com.slippedpenguin.mangolist.ui.components.FAVORITES_FILTER
 import com.slippedpenguin.mangolist.ui.components.LibraryHeader
+import com.slippedpenguin.mangolist.ui.components.LibrarySortMode
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
+import com.slippedpenguin.mangolist.ui.components.sortLibraryEntries
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
@@ -45,7 +46,8 @@ import kotlinx.coroutines.launch
  *   - Watchlist — filtered to mediaType=MANGA
  *   - Explore   — manga-only discovery carousels + search
  *
- * Pull-to-refresh syncs the AniList manga list.
+ * v1.5.6: centered pill tabs, per-sub-tab SaveableStateHolder, sort +
+ * corner filter controls in the watchlist header.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,60 +62,48 @@ fun MangaTabScreen(navController: NavController) {
     var isRefreshing by remember { mutableStateOf(false) }
 
     val tabs = listOf("Watchlist", "Explore")
+    val tabHolder = rememberSaveableStateHolder()
 
     Column(modifier = Modifier.fillMaxSize()) {
         OfflineBanner()
 
-        ScrollableTabRow(
-            selectedTabIndex = selectedTab,
-            edgePadding = 16.dp,
-        ) {
-            tabs.forEachIndexed { index, label ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = {
-                        Text(
-                            text = label,
-                            fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                        )
-                    },
-                )
-            }
-        }
+        CenteredPillTabs(
+            tabs = tabs,
+            selectedIndex = selectedTab,
+            onSelect = { selectedTab = it },
+        )
 
         when (selectedTab) {
-            0 -> PullToRefreshBox(
-                isRefreshing = isRefreshing,
-                onRefresh = {
-                    val tok = accessToken
-                    val id = userId
-                    if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
-                    scope.launch {
-                        isRefreshing = true
-                        try {
-                            val result = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
-                            if (result.entries != null && result.entries.isNotEmpty()) {
-                                app.database.animeDao().mergePullResults(result.entries)
+            0 -> tabHolder.SaveableStateProvider("manga_watchlist") {
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = {
+                        val tok = accessToken
+                        val id = userId
+                        if (tok.isNullOrBlank() || id.isNullOrBlank()) return@PullToRefreshBox
+                        scope.launch {
+                            isRefreshing = true
+                            try {
+                                val result = app.anilistClient.syncUserList(tok, id.toInt(), "MANGA")
+                                if (result.entries != null && result.entries.isNotEmpty()) {
+                                    app.database.animeDao().mergePullResults(result.entries)
+                                }
+                            } finally {
+                                isRefreshing = false
                             }
-                        } finally {
-                            isRefreshing = false
                         }
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                MangaWatchlistContent(
-                    navController = navController,
-                    onExplore = { selectedTab = 1 },
-                )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    MangaWatchlistContent(navController = navController)
+                }
             }
-            1 -> MangaExploreContent(navController)
+            1 -> tabHolder.SaveableStateProvider("manga_explore") {
+                MangaExploreContent(navController)
+            }
         }
     }
 }
-
-private const val FAVORITES_FILTER = "__favorites__"
 
 /*
  * Lightweight wrapper that shows manga-only watchlist.
@@ -121,7 +111,6 @@ private const val FAVORITES_FILTER = "__favorites__"
 @Composable
 private fun MangaWatchlistContent(
     navController: NavController,
-    onExplore: () -> Unit,
 ) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
@@ -129,6 +118,7 @@ private fun MangaWatchlistContent(
         .collectAsState(initial = emptyList())
 
     var selectedStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var sortMode by rememberSaveable { mutableStateOf(LibrarySortMode.UPDATED) }
     val mangaEntries = remember(entries) { entries.filter { it.mediaType == "MANGA" } }
     val counts = remember(mangaEntries) {
         buildMap<String?, Int> {
@@ -144,19 +134,11 @@ private fun MangaWatchlistContent(
             else -> mangaEntries.filter { it.status == selectedStatus }
         }
     }
+    val sorted = remember(filtered, sortMode) { sortLibraryEntries(filtered, sortMode) }
 
-    // v1.5.3: collapsed behind a corner button like the anime tab; manga
-    // chips read Reading/Rereading instead of Watching/Repeating.
     Column(modifier = Modifier.fillMaxSize()) {
-        LibraryFilterBar(
-            selectedStatus = selectedStatus,
-            counts = counts,
-            onSelect = { selectedStatus = it },
-            mediaType = "MANGA",
-            modifier = Modifier.padding(vertical = 2.dp),
-        )
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp),
         ) {
             item {
@@ -166,10 +148,15 @@ private fun MangaWatchlistContent(
                     total = mangaEntries.size,
                     active = mangaEntries.count { it.status in listOf("watching", "paused", "repeating") },
                     planned = mangaEntries.count { it.status == "plan" },
-                    onExplore = onExplore,
+                    selectedStatus = selectedStatus,
+                    counts = counts,
+                    onSelectStatus = { selectedStatus = it },
+                    sortMode = sortMode,
+                    onSortModeChange = { sortMode = it },
+                    mediaType = "MANGA",
                 )
             }
-            if (filtered.isEmpty()) {
+            if (sorted.isEmpty()) {
                 item {
                     Box(
                         modifier = Modifier
@@ -195,7 +182,7 @@ private fun MangaWatchlistContent(
                     }
                 }
             } else {
-                items(filtered, key = { it.anilistId }) { entry ->
+                items(sorted, key = { it.anilistId }) { entry ->
                     AnimeCard(
                         entry = entry,
                         onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },

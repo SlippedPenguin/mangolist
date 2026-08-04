@@ -24,16 +24,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ScrollableTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -46,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +73,7 @@ import com.slippedpenguin.mangolist.data.ScoreDisplay
 import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.SyncDiagnostics
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.CenteredPillTabs
 import com.slippedpenguin.mangolist.ui.components.CoverImage
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.components.StatusIcon
@@ -177,7 +184,12 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     // General / Debug sub-tabs so the debugger is tucked away.
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var settingsTab by rememberSaveable { mutableIntStateOf(0) }
-    val profileTabs = listOf("Overview", "Activity", "Stats", "Settings")
+
+    // v1.5.6: icon-driven profile header + centered pill tab row (AniHyou
+    // style), and a SaveableStateHolder so each tab keeps its own scroll
+    // position + state when you flip between Overview / Activity / Stats /
+    // Settings and back.
+    val tabHolder = rememberSaveableStateHolder()
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -186,53 +198,48 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             OfflineBanner()
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab,
-                edgePadding = 16.dp,
-            ) {
-                profileTabs.forEachIndexed { index, label ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = {
-                            Text(
-                                text = label,
-                                fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal,
-                            )
-                        },
-                    )
-                }
-            }
+
+            // Header row — avatar + name + settings gear (icon-driven).
+            ProfileHeaderRow(
+                avatarUrl = avatarUrl,
+                userName = userName,
+                entryCount = entries.size,
+                onSettings = { selectedTab = 3 },
+            )
+
+            CenteredPillTabs(
+                tabs = listOf(
+                    "Overview",
+                    "Activity",
+                    "Stats",
+                    "Settings",
+                ),
+                icons = listOf(
+                    Icons.Outlined.Person,
+                    Icons.Outlined.History,
+                    Icons.Outlined.BarChart,
+                    Icons.Outlined.Settings,
+                ),
+                selectedIndex = selectedTab,
+                onSelect = { selectedTab = it },
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+
             when (selectedTab) {
-                0 -> Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    // Avatar + greeting
-                    AsyncImage(
-                        model = avatarUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                0 -> Box(modifier = Modifier.weight(1f)) {
+                    tabHolder.SaveableStateProvider("overview") {
+                    Column(
                         modifier = Modifier
-                            .size(72.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                    )
-                    Spacer(Modifier.height(10.dp))
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                    // Greeting (avatar + entry count live in the header row).
                     Text(
-                        text = if (userName == null) "Not signed in" else "Hi, $userName",
+                        text = if (userName == null) "Sign in to sync your lists" else "Hi, $userName",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "${entries.size} entries in your local list",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center,
                     )
 
                     Spacer(Modifier.height(24.dp))
@@ -287,15 +294,21 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         ) { Text("Sign out", color = StatusDropped) }
                     }
                 }
-                1 -> Column(modifier = Modifier.weight(1f)) {
-                    ActivityTab(
-                        entries = entries,
-                        onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
-                    )
                 }
-                2 -> Column(
+                }
+                1 -> Box(modifier = Modifier.weight(1f)) {
+                    tabHolder.SaveableStateProvider("activity") {
+                        ActivityTab(
+                            entries = entries,
+                            onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
+                        )
+                    }
+                }
+                2 -> Box(modifier = Modifier.weight(1f)) {
+                    tabHolder.SaveableStateProvider("stats") {
+                    Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -453,9 +466,13 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     }
 
                 }
-                3 -> Column(
+                }
+                }
+                3 -> Box(modifier = Modifier.weight(1f)) {
+                    tabHolder.SaveableStateProvider("settings") {
+                    Column(
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -487,6 +504,8 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         0 -> AboutCard(userName = userName)
                         1 -> DiagnosticsCard()
                     }
+                }
+                }
                 }
             }
         }
@@ -917,6 +936,75 @@ private fun DiagnosticsCard() {
                     },
                 ) { Text("Clear") }
             }
+        }
+    }
+}
+
+/*
+ * ProfileHeaderRow — v1.5.6. Icon-driven profile header: circular avatar,
+ * username + entry count, and a settings gear that jumps to the Settings
+ * tab. Replaces the old top-of-Overview avatar block so every tab reads
+ * the same polished header.
+ */
+@Composable
+private fun ProfileHeaderRow(
+    avatarUrl: String?,
+    userName: String?,
+    entryCount: Int,
+    onSettings: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (avatarUrl != null) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Person,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = userName ?: "Not signed in",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "$entryCount entries in your list",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+        }
+        IconButton(onClick = onSettings) {
+            Icon(
+                imageVector = Icons.Outlined.Settings,
+                contentDescription = "Settings",
+                tint = TextSecondary,
+            )
         }
     }
 }
