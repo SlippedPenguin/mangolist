@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -84,11 +84,14 @@ fun LibraryHeader(
                     )
                 }
 
-                // Category selection — corner filter button (AniHyou style).
+                // v1.5.7: the filter icon is a funnel (FilterAlt) and the
+                // sort icon is up/down arrows (SwapVert) so the two corner
+                // buttons are unmistakable — previously both read as "three
+                // lines" and users couldn't tell which sorted what.
                 Box {
                     IconButton(onClick = { filterMenuOpen = true }) {
                         Icon(
-                            imageVector = Icons.Outlined.FilterList,
+                            imageVector = Icons.Outlined.FilterAlt,
                             contentDescription = "Filter by status",
                             tint = if (selectedStatus != null) Accent else TextSecondary,
                         )
@@ -130,7 +133,7 @@ fun LibraryHeader(
                 Box {
                     IconButton(onClick = { sortMenuOpen = true }) {
                         Icon(
-                            imageVector = Icons.Outlined.Sort,
+                            imageVector = Icons.Outlined.SwapVert,
                             contentDescription = "Sort list",
                             tint = Accent,
                         )

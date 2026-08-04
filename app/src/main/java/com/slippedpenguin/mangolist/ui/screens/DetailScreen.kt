@@ -817,9 +817,10 @@ private fun TrackingCard(
     onFavoriteToggle: () -> Unit,
     onAddToList: () -> Unit,
 ) {
-    Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)) {
-        SectionHeader("Tracking")
-        Spacer(Modifier.height(12.dp))
+    // v1.5.7: the "TRACKING" section label is gone — it sat awkwardly
+    // above the progress controls. The card now opens straight on the
+    // status row so the tracking UI reads as part of the detail flow.
+    Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp)) {
         val e = entry
         if (e == null) {
             Text(
@@ -848,12 +849,9 @@ private fun TrackingCard(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             StatusPill(status = e.status, mediaType = e.mediaType)
-            Text(
-                text = "Elo ${e.elo}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = tierColor(e.tier),
-                fontWeight = FontWeight.ExtraBold,
-            )
+            // v1.5.7: the naked "Elo 1500" number is gone — the tier list
+            // ranks by the out-of-10 score you already gave each title, so
+            // an arbitrary Elo counter only confused the tracking card.
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onFavoriteToggle) {
                 Icon(

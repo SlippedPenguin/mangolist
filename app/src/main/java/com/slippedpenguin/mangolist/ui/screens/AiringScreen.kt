@@ -418,7 +418,7 @@ private fun AiringCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(width = 56.dp, height = 80.dp)
+                    .size(width = 68.dp, height = 98.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,

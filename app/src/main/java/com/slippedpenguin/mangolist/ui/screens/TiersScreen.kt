@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.EloEngine
+import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
@@ -96,6 +97,7 @@ fun TiersScreen(navController: NavController) {
     val allEntries by dao.observeAll().collectAsState(initial = emptyList())
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId      by app.tokenStore.userId.collectAsState(initial = null)
+    val scoreScale by app.tokenStore.scoreScale.collectAsState(initial = ScoreScale.Default)
 
     // v1.5.1: count titles that have a personal score but no tier yet —
     // that's what the "Rank from my ratings" button can seed in one tap.
@@ -184,12 +186,17 @@ fun TiersScreen(navController: NavController) {
                 EloEngine.TIERS.forEach { tier ->
                     val entries = byTier[tier]?.value ?: emptyList()
                     item(key = "header_$tier") {
+                        // v1.5.7: header shows the tier's score range on the
+                        // user's scale (e.g. "8.5 – 9.5 / 10") instead of an
+                        // opaque Elo band.
+                        val scores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
+                        val rangeText = if (scores.isNotEmpty()) {
+                            "${formatScore(scores.min(), scoreScale)} – ${formatScore(scores.max(), scoreScale)}"
+                        } else null
                         TierHeader(
                             tier = tier,
                             count = entries.size,
-                            eloRange = entries.minOfOrNull { it.elo }?.let { lo ->
-                                lo..(entries.maxOfOrNull { it.elo } ?: lo)
-                            },
+                            rangeText = rangeText,
                         )
                     }
                     items(entries, key = { it.anilistId }) { entry ->
@@ -205,7 +212,7 @@ fun TiersScreen(navController: NavController) {
                     TierHeader(
                         tier = null,
                         count = unranked.size,
-                        eloRange = null,
+                        rangeText = null,
                     )
                 }
                 items(unranked, key = { it.anilistId }) { entry ->
@@ -342,7 +349,7 @@ private fun TierIntroCard(scoredUnranked: Int, onAutoRank: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = "Tier + Elo live in your local list and are never uploaded to AniList. " +
+                text = "Tiers live in your local list and are never uploaded to AniList. " +
                     if (scoredUnranked > 0) "You have $scoredUnranked rated titles waiting for a tier."
                     else "Rate titles on their Detail screen, then rank them here in one tap.",
                 style = MaterialTheme.typography.bodySmall,
@@ -371,7 +378,7 @@ private fun TierIntroCard(scoredUnranked: Int, onAutoRank: () -> Unit) {
  * longer drills down into vs-mode rounds.
  */
 @Composable
-private fun TierHeader(tier: String?, count: Int, eloRange: IntRange?) {
+private fun TierHeader(tier: String?, count: Int, rangeText: String?) {
     val accent = tierColor(tier)
     Row(
         modifier = Modifier
@@ -406,7 +413,7 @@ private fun TierHeader(tier: String?, count: Int, eloRange: IntRange?) {
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
         Text(
-            text = eloRange?.let { "${it.first}–${it.last} Elo" } ?: "long-press any card to rank",
+            text = rangeText?.let { "$it score" } ?: "long-press any card to rank",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
         )
@@ -419,11 +426,22 @@ private fun TierHeader(tier: String?, count: Int, eloRange: IntRange?) {
  * likes most in that tier. Returns null for the unranked bucket (the
  * badge then falls back to a centered dash).
  */
+/*
+ * formatScore — v1.5.7. Renders a stored 0-100 score on the user's scale
+ * for the tier header range ("8.5" for out-of-10, "85" for out-of-100).
+ */
+private fun formatScore(score: Int, scale: ScoreScale): String = when (scale) {
+    ScoreScale.OUT_OF_10  -> "%.1f".format(score / 10.0)
+    ScoreScale.OUT_OF_100 -> score.toString()
+}
+
 private fun rankWithinTierText(
     target: AnimeEntry,
     tierEntries: List<AnimeEntry>,
 ): String? {
-    val sorted = tierEntries.sortedByDescending { it.elo }
+    val sorted = tierEntries.sortedWith(
+        compareByDescending<AnimeEntry> { it.personalScore ?: 0 }.thenByDescending { it.elo },
+    )
     val idx = sorted.indexOfFirst { it.anilistId == target.anilistId }
     return if (idx < 0) null else "#${idx + 1} of ${sorted.size}"
 }

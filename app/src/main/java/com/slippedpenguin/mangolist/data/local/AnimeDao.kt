@@ -23,7 +23,10 @@ interface AnimeDao {
     @Query("SELECT * FROM anime_entries WHERE anilistId = :id LIMIT 1")
     suspend fun getById(id: Int): AnimeEntry?
 
-    @Query("SELECT * FROM anime_entries WHERE tier = :tier ORDER BY elo DESC")
+    // v1.5.7: tiers are ranked by the user's own 0-100 score (their
+    // out-of-10 rating), not the internal Elo counter. Elo remains only
+    // as a tiebreaker so legacy rows keep a deterministic order.
+    @Query("SELECT * FROM anime_entries WHERE tier = :tier ORDER BY COALESCE(personalScore, 0) DESC, elo DESC")
     fun observeByTier(tier: String): Flow<List<AnimeEntry>>
 
     @Query("SELECT * FROM anime_entries WHERE tier IS NULL ORDER BY updatedAt DESC")

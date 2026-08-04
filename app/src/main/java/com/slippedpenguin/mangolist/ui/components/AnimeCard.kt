@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,13 +108,15 @@ fun AnimeCard(
             // when the URL is missing or fails to load, so a broken cover
             // never leaves a blank dark box (the "manga cards show nothing"
             // bug was this: data fine, fallback absent).
+            // v1.5.7: bigger poster (AniHyou-sized rows) so the cover art
+            // carries the card. 68x98 keeps a 2:3 manga ratio.
             CoverImage(
                 model = entry.cover,
                 contentDescription = entry.title,
                 tint = tierColor(entry.tier).copy(alpha = 0.35f),
                 label = entry.title,
                 modifier = Modifier
-                    .size(width = 56.dp, height = 80.dp)
+                    .size(width = 68.dp, height = 98.dp)
                     .clip(RoundedCornerShape(12.dp)),
             )
 
@@ -161,6 +164,8 @@ fun AnimeCard(
                 }
                 entryProgressFraction(entry)?.let { fraction ->
                     Spacer(Modifier.height(6.dp))
+                    // v1.5.7: StrokeCap.Butt removes the rounded end-cap that
+                    // rendered as a stray "dot" at the tip of the bar.
                     LinearProgressIndicator(
                         progress = { fraction },
                         modifier = Modifier
@@ -169,6 +174,7 @@ fun AnimeCard(
                             .clip(RoundedCornerShape(1.5.dp)),
                         color = Accent.copy(alpha = 0.85f),
                         trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Butt,
                     )
                 }
             }

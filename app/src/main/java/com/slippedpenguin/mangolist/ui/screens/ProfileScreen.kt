@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +38,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -105,7 +106,7 @@ import java.util.Locale
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
+fun ProfileScreen(navController: NavController) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val scope = rememberCoroutineScope()
@@ -199,12 +200,13 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
         Column(modifier = Modifier.fillMaxSize()) {
             OfflineBanner()
 
-            // Header row — avatar + name + settings gear (icon-driven).
+            // Header row — avatar + name + entry count. v1.5.7: the settings
+            // gear was removed because the Settings tab (gear icon) already
+            // sits in the tab row below — two gears read as a broken header.
             ProfileHeaderRow(
                 avatarUrl = avatarUrl,
                 userName = userName,
                 entryCount = entries.size,
-                onSettings = { selectedTab = 3 },
             )
 
             CenteredPillTabs(
@@ -232,17 +234,72 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(20.dp),
+                            .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                    // Greeting (avatar + entry count live in the header row).
-                    Text(
-                        text = if (userName == null) "Sign in to sync your lists" else "Hi, $userName",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    // v1.5.7: Overview is no longer a bare greeting + two
+                    // buttons. It now leads with quick stats and favorites
+                    // (AniHyou-style), with account actions at the bottom.
 
-                    Spacer(Modifier.height(24.dp))
+                    // Greeting — small kicker + name.
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Text(
+                            text = "PROFILE",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Accent,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp,
+                        )
+                        Text(
+                            text = if (userName == null) "Sign in to sync your lists" else "Hi, $userName",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // Quick stats — episodes, days watched, mean score.
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            QuickStat("${stats.episodesWatched}", "Episodes", Modifier.weight(1f))
+                            QuickStat(formatDays(stats.daysWatched), "Days watched", Modifier.weight(1f))
+                            QuickStat(formatMean(stats.personalMean, scoreScale), "Mean score", Modifier.weight(1f))
+                        }
+                    }
+
+                    // Favorites — tap a cover to open its detail screen.
+                    val favorites = remember(entries) { entries.filter { it.favourite } }
+                    if (favorites.isNotEmpty()) {
+                        Spacer(Modifier.height(14.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.Start,
+                        ) {
+                            Text(
+                                text = "Favorites",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            FavoritesRow(
+                                favorites = favorites.take(12),
+                                onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
 
                     // Account actions live in Overview.
                     if (userName == null) {
@@ -282,7 +339,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Sync now") }
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
@@ -310,7 +367,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // Core stats card
@@ -347,7 +404,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
 
                     // AniList viewer stats card
                     if (viewer != null || viewerLoading) {
@@ -394,7 +451,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                     // v1.5.3: the per-status breakdown is gone — the Anime/Manga
@@ -414,7 +471,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                     // Genre distribution (top 8)
@@ -430,7 +487,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                     // Format distribution
@@ -446,7 +503,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                     // Year distribution (top 8)
@@ -462,7 +519,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                                 }
                             }
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                     }
 
                 }
@@ -474,7 +531,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(20.dp),
+                        .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // v1.5.5: Settings splits into General / Debug sub-tabs —
@@ -499,7 +556,7 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                             ),
                         )
                     }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                     when (settingsTab) {
                         0 -> AboutCard(userName = userName)
                         1 -> DiagnosticsCard()
@@ -710,8 +767,12 @@ private fun ActivityTab(
     onNavigateDetail: (Int, String) -> Unit,
 ) {
     val activity = remember(entries) {
-        entries.sortedByDescending { it.updatedAt }.take(40)
+        entries.sortedByDescending { it.updatedAt }
     }
+    // v1.5.7: paged instead of one long infinite scroll — 12 rows per
+    // page with a "Show more" button at the bottom.
+    var visibleCount by rememberSaveable { mutableIntStateOf(12) }
+    val shown = remember(activity, visibleCount) { activity.take(visibleCount) }
     if (activity.isEmpty()) {
         Box(
             modifier = Modifier.fillMaxWidth().padding(24.dp),
@@ -729,10 +790,10 @@ private fun ActivityTab(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(20.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            activity.forEach { entry ->
+            shown.forEach { entry ->
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -775,6 +836,19 @@ private fun ActivityTab(
                             }
                         }
                     }
+                }
+            }
+            if (activity.size > visibleCount) {
+                Spacer(Modifier.height(4.dp))
+                TextButton(
+                    onClick = { visibleCount += 12 },
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text(
+                        text = "Show more (${activity.size - visibleCount} remaining)",
+                        color = Accent,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 }
             }
         }
@@ -942,16 +1016,15 @@ private fun DiagnosticsCard() {
 
 /*
  * ProfileHeaderRow — v1.5.6. Icon-driven profile header: circular avatar,
- * username + entry count, and a settings gear that jumps to the Settings
- * tab. Replaces the old top-of-Overview avatar block so every tab reads
- * the same polished header.
+ * username + entry count. v1.5.7: the settings gear was dropped because
+ * the Settings tab (gear icon) already lives in the tab row below — the
+ * duplicate gear read as a broken header.
  */
 @Composable
 private fun ProfileHeaderRow(
     avatarUrl: String?,
     userName: String?,
     entryCount: Int,
-    onSettings: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -999,12 +1072,64 @@ private fun ProfileHeaderRow(
                 color = TextSecondary,
             )
         }
-        IconButton(onClick = onSettings) {
-            Icon(
-                imageVector = Icons.Outlined.Settings,
-                contentDescription = "Settings",
-                tint = TextSecondary,
-            )
+    }
+}
+
+/*
+ * QuickStat — v1.5.7. One value+label column for the Overview quick-stats
+ * card (episodes / days watched / mean score), matching AniHyou's stat
+ * columns on the profile.
+ */
+@Composable
+private fun QuickStat(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            color = Accent,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+        )
+    }
+}
+
+/*
+ * FavoritesRow — v1.5.7. Horizontal strip of favorite covers on the
+ * Overview tab. Tap any cover to open its detail screen.
+ */
+@Composable
+private fun FavoritesRow(
+    favorites: List<AnimeEntry>,
+    onNavigateDetail: (Int, String) -> Unit,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        items(favorites, key = { it.anilistId }) { entry ->
+            Column(
+                modifier = Modifier
+                    .width(84.dp)
+                    .clickable { onNavigateDetail(entry.anilistId, entry.mediaType) },
+            ) {
+                CoverImage(
+                    model = entry.cover,
+                    contentDescription = entry.title,
+                    label = entry.title,
+                    modifier = Modifier
+                        .size(width = 84.dp, height = 118.dp)
+                        .clip(RoundedCornerShape(10.dp)),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = entry.title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
