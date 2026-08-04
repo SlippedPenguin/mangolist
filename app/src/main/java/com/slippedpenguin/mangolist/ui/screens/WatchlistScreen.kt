@@ -226,7 +226,6 @@ fun WatchlistScreen(navController: NavController) {
                                 entry = entry,
                                 onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
                                 showSyncPending = true,
-                                showRelativeTimestamp = true,
                                 showFavorite = true,
                             )
                         }

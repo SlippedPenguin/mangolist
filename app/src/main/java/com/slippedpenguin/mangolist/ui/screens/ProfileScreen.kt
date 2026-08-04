@@ -4,8 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.text.format.DateUtils
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ScrollableTabRow
@@ -51,6 +55,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -62,7 +67,10 @@ import com.slippedpenguin.mangolist.data.ScoreDisplay
 import com.slippedpenguin.mangolist.data.ScoreScale
 import com.slippedpenguin.mangolist.data.SyncDiagnostics
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
+import com.slippedpenguin.mangolist.ui.components.CoverImage
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
+import com.slippedpenguin.mangolist.ui.components.StatusIcon
+import com.slippedpenguin.mangolist.ui.components.statusFilterLabel
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BgInput
 import com.slippedpenguin.mangolist.ui.theme.StatusCompleted
@@ -164,8 +172,12 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
     // v1.5.4: AniHyou-style tabbed profile — identity + account actions in
     // Overview, breakdowns in Stats, and the sync debugger hidden inside
     // Settings instead of squatting on every scroll.
+    // v1.5.5: an Activity tab now owns the "Edited X ago" timestamps that
+    // used to sit on every watchlist card, and Settings splits into
+    // General / Debug sub-tabs so the debugger is tucked away.
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    val profileTabs = listOf("Overview", "Stats", "Settings")
+    var settingsTab by rememberSaveable { mutableIntStateOf(0) }
+    val profileTabs = listOf("Overview", "Activity", "Stats", "Settings")
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -275,7 +287,13 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                         ) { Text("Sign out", color = StatusDropped) }
                     }
                 }
-                1 -> Column(
+                1 -> Column(modifier = Modifier.weight(1f)) {
+                    ActivityTab(
+                        entries = entries,
+                        onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
+                    )
+                }
+                2 -> Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
@@ -435,15 +453,40 @@ fun ProfileScreen(@Suppress("UNUSED_PARAMETER") navController: NavController) {
                     }
 
                 }
-                2 -> Column(
+                3 -> Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    // v1.5.4: the sync debugger lives in Settings, out of the way.
-                    DiagnosticsCard()
+                    // v1.5.5: Settings splits into General / Debug sub-tabs —
+                    // the sync debugger now lives under Debug.
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = settingsTab == 0,
+                            onClick = { settingsTab = 0 },
+                            label = { Text("General") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Accent.copy(alpha = 0.22f),
+                                selectedLabelColor = Accent,
+                            ),
+                        )
+                        FilterChip(
+                            selected = settingsTab == 1,
+                            onClick = { settingsTab = 1 },
+                            label = { Text("Debug") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Accent.copy(alpha = 0.22f),
+                                selectedLabelColor = Accent,
+                            ),
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    when (settingsTab) {
+                        0 -> AboutCard(userName = userName)
+                        1 -> DiagnosticsCard()
+                    }
                 }
             }
         }
@@ -635,6 +678,134 @@ private fun prettyFormat(fmt: String?): String = when (fmt) {
     "MUSIC"       -> "Music"
     null          -> "Unknown"
     else          -> fmt.lowercase().replaceFirstChar { it.uppercase() }
+}
+
+/*
+ * ActivityTab — v1.5.5. Replaces the per-card "Edited X ago" lines that used
+ * to sit on every watchlist card. Sorted by most-recently-updated, each row
+ * shows the cover, title, status icon, and how long ago it was edited.
+ */
+@Composable
+private fun ActivityTab(
+    entries: List<AnimeEntry>,
+    onNavigateDetail: (Int, String) -> Unit,
+) {
+    val activity = remember(entries) {
+        entries.sortedByDescending { it.updatedAt }.take(40)
+    }
+    if (activity.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "No activity yet — edits and progress updates will show up here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+            )
+        }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            activity.forEach { entry ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onNavigateDetail(entry.anilistId, entry.mediaType) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CoverImage(
+                            model = entry.cover,
+                            contentDescription = entry.title,
+                            label = entry.title,
+                            modifier = Modifier
+                                .size(width = 44.dp, height = 62.dp)
+                                .clip(RoundedCornerShape(8.dp)),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = entry.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                StatusIcon(status = entry.status, mediaType = entry.mediaType)
+                                Text(
+                                    text = "${statusFilterLabel(entry.status, entry.mediaType)} · ${relativeTimeText(entry.updatedAt)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMuted,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/*
+ * `relativeTimeText` — "X ago" formatting for the Activity tab. Wraps
+ * android.text.format.DateUtils so the user's locale + system preferences
+ * pick the right format ("2h ago" vs "2 hours ago").
+ */
+private fun relativeTimeText(epochMs: Long): String =
+    DateUtils.getRelativeTimeSpanString(
+        epochMs,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
+        DateUtils.FORMAT_ABBREV_RELATIVE,
+    ).toString()
+
+/*
+ * AboutCard — the General sub-tab inside Profile Settings. A lightweight
+ * place for non-debug info (version, sign-in state) so the Settings tab is
+ * never just a wall of debug text.
+ */
+@Composable
+private fun AboutCard(userName: String?) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text(
+                text = "ABOUT",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary,
+                letterSpacing = 2.sp,
+            )
+            StatRow(label = "App version", value = "MangoList ${BuildConfig.VERSION_NAME}")
+            StatRow(label = "Signed in", value = userName ?: "Not signed in")
+            Text(
+                text = "Tier rankings are stored on-device and never uploaded to AniList.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+            )
+        }
+    }
 }
 
 /*

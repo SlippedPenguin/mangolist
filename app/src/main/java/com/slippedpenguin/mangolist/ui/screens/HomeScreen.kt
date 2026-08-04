@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -38,16 +37,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
-import com.slippedpenguin.mangolist.ui.components.AnimeCard
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BgCardHover
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 
 /**
- * Home dashboard: a quick read of the library, active titles, recent changes,
- * and a clear route into tier ranking. It stays useful both before and after
- * the first AniList sync.
+ * Home dashboard: a quick read of the library and a clear route into tier
+ * ranking. v1.5.5 dropped the "Pick up where you left off" list and the
+ * timestamped "Recent activity" list — activity now lives on the Profile
+ * Activity tab, keeping Home a clean at-a-glance dashboard.
  */
 @Composable
 fun HomeScreen(navController: NavController) {
@@ -56,12 +55,8 @@ fun HomeScreen(navController: NavController) {
     val entries by app.database.animeDao().observeAll().collectAsState(initial = emptyList())
 
     val inProgress = remember(entries) {
-        entries
-            .filter { it.status in listOf("watching", "paused", "repeating") }
-            .sortedByDescending { it.updatedAt }
-            .take(8)
+        entries.count { it.status in listOf("watching", "paused", "repeating") }
     }
-    val recent = remember(entries) { entries.sortedByDescending { it.updatedAt }.take(5) }
     val animeCount = remember(entries) { entries.count { it.mediaType == "ANIME" } }
     val mangaCount = remember(entries) { entries.count { it.mediaType == "MANGA" } }
     val rankedCount = remember(entries) { entries.count { it.tier != null } }
@@ -81,7 +76,7 @@ fun HomeScreen(navController: NavController) {
             } else {
                 DashboardHeader(
                     total = entries.size,
-                    inProgress = inProgress.size,
+                    inProgress = inProgress,
                     ranked = rankedCount,
                     animeCount = animeCount,
                     mangaCount = mangaCount,
@@ -95,30 +90,6 @@ fun HomeScreen(navController: NavController) {
             TierShortcut(
                 onClick = { navController.navigate("tiers") },
             )
-        }
-
-        if (inProgress.isNotEmpty()) {
-            item { SectionHeading("Pick up where you left off", "Active titles") }
-            items(inProgress, key = { "home_progress_${it.mediaType}_${it.anilistId}" }) { entry ->
-                AnimeCard(
-                    entry = entry,
-                    onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                    showSyncPending = true,
-                    showFavorite = true,
-                )
-            }
-        }
-
-        if (recent.isNotEmpty()) {
-            item { SectionHeading("Recent activity", "Your latest updates") }
-            items(recent, key = { "home_recent_${it.mediaType}_${it.anilistId}" }) { entry ->
-                AnimeCard(
-                    entry = entry,
-                    onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                    showRelativeTimestamp = true,
-                    showTier = false,
-                )
-            }
         }
     }
 }

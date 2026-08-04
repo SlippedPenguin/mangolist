@@ -2,9 +2,9 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.4](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.4)
-> **Working tree:** v1.5.4 on top of v1.5.3: (1) Home tier shortcut cleaned up — the icon box now uses the periwinkle Accent (was S-tier pink/red) and the subtitle text under "Build your tier list" is gone, leaving a single-line card. (2) Profile restructured into AniHyou-style tabs — Overview (avatar, greeting, entry count, sign-in/sync/sign-out) / Stats (core stats, AniList viewer stats, tier/genre/format/year breakdowns) / Settings (sync diagnostics only). The long single-scroll stats wall is gone. (3) The sync diagnostics card now lives only inside the Settings tab, hidden away instead of squatting at the bottom of every Profile scroll. (4) Dead statusCounts aggregation removed from LocalStats.
-> **Deprecated releases:** none — all previous broken v1.5.0–v1.5.4 tags were repointed to stable builds (v1.5.0 = UI polish, v1.5.1 = UI/UX hardening, v1.5.2 = relation-nav/hero/tierlist fixes, v1.5.3 = AniHyou polish pass, v1.5.4 = tabbed profile + tier shortcut cleanup).
+> **Latest documented release:** [v1.5.5](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.5)
+> **Working tree:** v1.5.5 polish pass: (1) LibraryFilterBar collapsed state is now a centered pill (icon + filter label + count) with a centered chip FlowRow, replacing the corner-aligned button. (2) ExplorePosterCard rating moved from a corner badge overlay to a percentage under the title. (3) AnimeCard list cards now use a StatusIcon (colored 16dp icon per status) instead of a text pill, and gained a LinearProgressIndicator (3dp, currentEp/total). (4) The "Edited X ago" timestamp line was removed from every watchlist card — it moved to a new Profile Activity tab. (5) HomeScreen lost both "Pick up where you left off" and "Recent activity" sections, keeping only the dashboard header + tier shortcut. (6) Profile Settings now splits into General/Debug sub-tabs with the debugger hidden under Debug.
+> **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
 > **Client ID:** 46025  
 > **Redirect URI:** `com.slippedpenguin.mangolist://callback`
 

@@ -5,13 +5,24 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.ui.theme.BorderStrong
 import com.slippedpenguin.mangolist.ui.theme.StatusCompleted
@@ -59,4 +70,35 @@ fun StatusPill(
             color = color,
         )
     }
+}
+
+/*
+ * StatusIcon — the v1.5.5 replacement for the text pill on list cards.
+ * A single colored icon represents each watch status (play for watching,
+ * check for completed, pause, replay, calendar for plan, block for dropped).
+ * Manga-aware: "watching" renders a book icon so it reads as Reading.
+ * The text pill is still used on the Detail screen's tracking card and
+ * status picker, where a label is required.
+ */
+@Composable
+fun StatusIcon(
+    status: String,
+    modifier: Modifier = Modifier,
+    mediaType: String = "ANIME",
+) {
+    val (icon, color) = when (status) {
+        "plan"      -> Icons.Outlined.Schedule to StatusPlan
+        "watching"  -> (if (mediaType == "MANGA") Icons.Filled.MenuBook else Icons.Filled.PlayArrow) to StatusWatching
+        "completed" -> Icons.Filled.CheckCircle to StatusCompleted
+        "dropped"   -> Icons.Filled.Block to StatusDropped
+        "paused"    -> Icons.Filled.Pause to StatusPaused
+        "repeating" -> Icons.Filled.Replay to StatusRepeating
+        else        -> Icons.Outlined.Schedule to BorderStrong
+    }
+    Icon(
+        imageVector = icon,
+        contentDescription = status,
+        tint = color,
+        modifier = modifier.size(16.dp),
+    )
 }

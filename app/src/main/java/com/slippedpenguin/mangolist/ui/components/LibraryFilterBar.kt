@@ -5,22 +5,23 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalLayoutApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.ui.theme.Accent
@@ -62,12 +64,12 @@ internal fun statusFilterLabel(status: String?, mediaType: String): String = whe
 /*
  * LibraryFilterBar — AniHyou-style collapsible category filter.
  *
- * v1.5.1 pinned a full row of status chips above the list so categories
- * never scrolled out of reach — but that made the island permanently eat
- * vertical space and read as a second tab row. v1.5.3 collapses it behind
- * a corner button (filter icon + current selection) exactly like the
- * reference client: tap to expand the chips, tap again to collapse.
+ * v1.5.3 collapsed the category row behind a corner button; v1.5.5 centers
+ * it: the collapsed state is a single centered pill (icon + current filter
+ * + count) and the expanded category chips wrap centered instead of hugging
+ * the left edge, so the top of the list always reads balanced.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LibraryFilterBar(
     selectedStatus: String?,
@@ -87,44 +89,56 @@ fun LibraryFilterBar(
     val currentCount = counts[selectedStatus] ?: 0
 
     Column(modifier = modifier) {
-        // Corner button — the whole tap target shows the active filter so
-        // the current category is always readable even when collapsed.
-        Row(
+        // Centered pill — icon + active filter + count as one tap target.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(vertical = 2.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = "$currentLabel · $currentCount",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = if (selectedStatus == null) TextSecondary else Accent,
-                modifier = Modifier.padding(start = 10.dp),
-            )
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { expanded = !expanded }) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (expanded) Accent.copy(alpha = 0.16f)
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    )
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Icon(
                     imageVector = Icons.Outlined.FilterList,
                     contentDescription = if (expanded) "Collapse status filter"
                                          else "Expand status filter",
                     tint = if (expanded) Accent else TextSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text = "$currentLabel · $currentCount",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (selectedStatus == null) TextSecondary else Accent,
                 )
             }
         }
 
-        // v1.5.3: chips slide open/closed under the corner button instead
-        // of squatting permanently above the list.
+        // v1.5.5: chips slide open/closed under the pill and wrap centered
+        // instead of hugging the left edge of a LazyRow.
         AnimatedVisibility(
             visible = expanded,
             enter = expandVertically(animationSpec = androidx.compose.animation.core.tween(180)) + fadeIn(),
             exit = shrinkVertically(animationSpec = androidx.compose.animation.core.tween(140)) + fadeOut(),
         ) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(visibleFilters, key = { it ?: "all" }) { key ->
+                visibleFilters.forEach { key ->
                     FilterChip(
                         selected = selectedStatus == key,
                         onClick = { onSelect(key) },

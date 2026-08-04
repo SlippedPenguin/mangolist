@@ -84,26 +84,6 @@ fun AnimePosterCard(
                     label = entry.title,
                     modifier = Modifier.fillMaxSize(),
                 )
-                if (entry.averageScore != null && entry.averageScore > 0) {
-                    // AniList's averageScore is 0-100; render as a small badge
-                    // in the top-right. We deliberately use the raw value (e.g.
-                    // "82") rather than a star emoji per v0.9's UI brief.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.Black.copy(alpha = 0.65f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    ) {
-                        Text(
-                            text = "${entry.averageScore}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
             }
         }
 
@@ -121,6 +101,16 @@ fun AnimePosterCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (entry.averageScore != null && entry.averageScore > 0) {
+                // v1.5.5: rating as a percentage sits under the title (was a
+                // corner badge on the poster). AniList's averageScore is 0-100.
+                Text(
+                    text = "${entry.averageScore}%",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = Accent,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
             entry.year?.let {
                 Text(
                     text = it.toString(),

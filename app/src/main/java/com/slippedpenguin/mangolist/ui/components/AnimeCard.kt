@@ -1,6 +1,5 @@
 package com.slippedpenguin.mangolist.ui.components
 
-import android.text.format.DateUtils
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -19,6 +18,7 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +31,6 @@ import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
-import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 
@@ -60,6 +59,11 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
  *     title when `entry.favourite == true`. Order: title -> favorite ->
  *     cloud-upload so favourite reads as a property and cloud-upload reads
  *     as transient dirty state. Tiers/Airing omit it; Watchlist passes it.
+ *
+ * v1.5.5: the text status pill became a small colored icon (`StatusIcon`)
+ * and every card shows a thin progress bar (current progress / total) so
+ * list rows read at a glance. The "Edited X ago" line was removed — that
+ * detail moved to the Profile Activity tab.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -71,7 +75,6 @@ fun AnimeCard(
     showTier: Boolean = true,
     rankText: String? = null,
     showSyncPending: Boolean = false,
-    showRelativeTimestamp: Boolean = false,
     showFavorite: Boolean = false,
 ) {
     Card(
@@ -153,15 +156,19 @@ fun AnimeCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    StatusPill(status = entry.status, mediaType = entry.mediaType)
+                    StatusIcon(status = entry.status, mediaType = entry.mediaType)
                     entryProgressText(entry)
                 }
-                if (showRelativeTimestamp) {
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "Edited ${relativeTimeText(entry.updatedAt)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
+                entryProgressFraction(entry)?.let { fraction ->
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(1.5.dp)),
+                        color = Accent.copy(alpha = 0.85f),
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     )
                 }
             }
@@ -189,19 +196,25 @@ internal fun AnimeEntry.isPendingSync(): Boolean {
 }
 
 /*
- * `relativeTimeText` — single source of truth for "X ago" labels on
- * cards. Wraps android.text.format.DateUtils so the user's locale +
- * system preferences pick the right format (e.g. "2h ago" vs
- * "2 hours ago"). MINUTE_IN_MILLIS keeps minutes as the smallest
- * displayed unit; FORMAT_ABBREV_RELATIVE picks the abbreviation.
+ * `entryProgressTotal` — the series/chapter/volume total used by both the
+ * progress text and the progress bar, normalized by format so anime counts
+ * episodes, manga counts chapters, and novels count volumes.
  */
-private fun relativeTimeText(epochMs: Long): String =
-    DateUtils.getRelativeTimeSpanString(
-        epochMs,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS,
-        DateUtils.FORMAT_ABBREV_RELATIVE,
-    ).toString()
+private fun entryProgressTotal(entry: AnimeEntry): Int? = when {
+    entry.format == "NOVEL" || entry.format == "LIGHT_NOVEL" -> entry.volumes ?: entry.episodes
+    entry.mediaType == "MANGA" -> entry.chapters ?: entry.episodes
+    else -> entry.episodes
+}
+
+/*
+ * `entryProgressFraction` — 0..1 progress for the card's LinearProgressIndicator.
+ * Null when there's no known total (nothing to measure).
+ */
+private fun entryProgressFraction(entry: AnimeEntry): Float? {
+    val total = entryProgressTotal(entry) ?: return null
+    if (total <= 0) return null
+    return (entry.currentEp.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+}
 
 /*
  * Tiny helper — formats "0 / 12" (or "12 / 12 · completed") under each card.
@@ -215,11 +228,7 @@ private fun entryProgressText(entry: AnimeEntry) {
         entry.mediaType == "MANGA" -> "ch"
         else -> "ep"
     }
-    val total = when {
-        entry.format == "NOVEL" || entry.format == "LIGHT_NOVEL" -> entry.volumes ?: entry.episodes
-        entry.mediaType == "MANGA" -> entry.chapters ?: entry.episodes
-        else -> entry.episodes
-    }
+    val total = entryProgressTotal(entry)
     val now = entry.currentEp
     val text = if (total != null && total > 0) "$now / $total $unit" else "$now $unit"
     Text(
