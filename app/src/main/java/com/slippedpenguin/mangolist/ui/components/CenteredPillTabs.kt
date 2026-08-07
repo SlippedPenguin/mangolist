@@ -31,6 +31,10 @@ import com.slippedpenguin.mangolist.ui.theme.TextSecondary
  * The rows are short (2–4 pills) so they always fit — no scrolling needed.
  * Pass `icons` (same length as `tabs`) to render a leading icon per pill,
  * which is how Profile gets its icon-driven tab row.
+ *
+ * v1.5.8: `showLabels` — when false the text label is dropped entirely so
+ * the row is pure icons (Profile's tab row). `tabs` strings still drive
+ * accessibility content descriptions in icon-only mode.
  */
 @Composable
 fun CenteredPillTabs(
@@ -39,6 +43,7 @@ fun CenteredPillTabs(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     icons: List<ImageVector?>? = null,
+    showLabels: Boolean = true,
 ) {
     Row(
         modifier = modifier
@@ -64,17 +69,19 @@ fun CenteredPillTabs(
                 icons?.getOrNull(index)?.let { icon ->
                     Icon(
                         imageVector = icon,
-                        contentDescription = null,
+                        contentDescription = if (showLabels) null else label,
                         tint = if (selected) Accent else TextSecondary,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(if (showLabels) 16.dp else 18.dp),
                     )
                 }
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                    color = if (selected) Accent else TextSecondary,
-                )
+                if (showLabels) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (selected) Accent else TextSecondary,
+                    )
+                }
             }
         }
     }

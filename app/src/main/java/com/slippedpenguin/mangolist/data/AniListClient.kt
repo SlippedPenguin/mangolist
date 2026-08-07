@@ -501,6 +501,141 @@ class AniListClient(
     }
 
     /**
+     * Fetch the authenticated viewer's recent activity feed (v1.5.8).
+     * Hand-rolled GraphQL POST for the same reason as `syncUserList`:
+     * Apollo Kotlin codegen is fragile with inline fragment spreads on
+     * the Activity union, so we parse the response directly.
+     *
+     * Returns only ListActivity + TextActivity items (the two kinds the
+     * Profile Activity tab renders), newest first. ListActivity carries
+     * `progress` + `status` + `media` so the feed can say "watched episode
+     * 5 of …" instead of just "updated · 2h ago".
+     */
+    suspend fun getUserActivities(token: String, userId: Int, perPage: Int = 25): List<ActivityItem> {
+        if (token.isBlank() || userId <= 0) return emptyList()
+        return withNetwork(emptyList()) {
+            try {
+                withContext(Dispatchers.IO) {
+                    val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+                    val payload = buildJsonObject {
+                        put(
+                            "query",
+                            """
+                            query(${'$'}userId: Int, ${'$'}perPage: Int) {
+                              Page(perPage: ${'$'}perPage) {
+                                activities(userId: ${'$'}userId, sort: ID_DESC) {
+                                  __typename
+                                  ... on ListActivity {
+                                    id
+                                    createdAt
+                                    progress
+                                    status
+                                    likeCount
+                                    replyCount
+                                    media {
+                                      id
+                                      type
+                                      title { romaji english }
+                                      coverImage { large medium }
+                                    }
+                                  }
+                                  ... on TextActivity {
+                                    id
+                                    createdAt
+                                    text
+                                    likeCount
+                                    replyCount
+                                  }
+                                }
+                              }
+                            }
+                            """.trimIndent().replace("\n", " "),
+                        )
+                        put("variables", buildJsonObject {
+                            put("userId", userId)
+                            put("perPage", perPage)
+                        })
+                    }
+                    val body = json.encodeToString(JsonObject.serializer(), payload)
+
+                    val conn = openPost("https://graphql.anilist.co", token)
+                    conn.outputStream.use { it.write(body.toByteArray()) }
+
+                    if (conn.responseCode !in 200..299) {
+                        val errorBody = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        android.util.Log.w(
+                            "AniListClient",
+                            "getUserActivities HTTP ${conn.responseCode}: ${errorBody.take(300)}",
+                        )
+                        return@withContext emptyList()
+                    }
+                    val responseBody = conn.inputStream.bufferedReader().use { it.readText() }
+                    val root = json.parseToJsonElement(responseBody).jsonObject
+
+                    (root["errors"] as? kotlinx.serialization.json.JsonArray)?.let { errs ->
+                        val msgs = errs.joinToString(", ") { e ->
+                            ((e as? JsonObject)?.get("message") as? kotlinx.serialization.json.JsonPrimitive)?.content ?: e.toString()
+                        }
+                        android.util.Log.w("AniListClient", "getUserActivities GraphQL errors: $msgs")
+                        return@withContext emptyList()
+                    }
+
+                    val page = root["data"]?.jsonObject?.get("Page") as? JsonObject ?: return@withContext emptyList()
+                    val activities = page["activities"] as? JsonArray ?: return@withContext emptyList()
+
+                    activities.mapNotNull { el ->
+                        val obj = el as? JsonObject ?: return@mapNotNull null
+                        val createdAt = obj["createdAt"].numLong() ?: return@mapNotNull null
+                        when (obj["__typename"].numString()) {
+                            "ListActivity" -> {
+                                val media = obj["media"] as? JsonObject
+                                val title = media?.get("title") as? JsonObject
+                                val cover = media?.get("coverImage") as? JsonObject
+                                ActivityItem(
+                                    id = obj["id"].numInt() ?: 0,
+                                    createdAt = createdAt,
+                                    type = "list",
+                                    progress = obj["progress"].numInt(),
+                                    status = obj["status"].numString(),
+                                    likeCount = obj["likeCount"].numInt() ?: 0,
+                                    replyCount = obj["replyCount"].numInt() ?: 0,
+                                    mediaId = media?.get("id").numInt(),
+                                    mediaTitle = title?.get("english").numString()
+                                        ?: title?.get("romaji").numString(),
+                                    mediaCover = cover?.get("large").numString()
+                                        ?: cover?.get("medium").numString(),
+                                    mediaType = media?.get("type").numString(),
+                                    text = null,
+                                )
+                            }
+                            "TextActivity" -> ActivityItem(
+                                id = obj["id"].numInt() ?: 0,
+                                createdAt = createdAt,
+                                type = "text",
+                                progress = null,
+                                status = null,
+                                likeCount = obj["likeCount"].numInt() ?: 0,
+                                replyCount = obj["replyCount"].numInt() ?: 0,
+                                mediaId = null,
+                                mediaTitle = null,
+                                mediaCover = null,
+                                mediaType = null,
+                                text = obj["text"].numString(),
+                            )
+                            else -> null
+                        }
+                    }
+                }  // withContext
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("AniListClient", "getUserActivities failed", e)
+                emptyList()
+            }
+        }
+    }
+
+    /**
      * Fetch the authenticated viewer's full [type] list (ANIME or MANGA)
      * and map each entry to the local AnimeEntry model. Uses a hand-rolled
      * GraphQL POST to avoid Apollo codegen fragility with fragment spreads.
@@ -1343,6 +1478,29 @@ data class AiringSlot(
     val averageScore: Int? = null,
     val anilistStatus: String? = null,
     val bannerImage: String? = null,
+)
+
+/*
+ * One entry from the user's AniList activity feed (v1.5.8).
+ *
+ * `type` is "list" (ListActivity — a status/progress change on a media
+ * entry) or "text" (TextActivity — a user-posted message). For list items
+ * `progress`/`status`/`media*` describe what changed; for text items the
+ * payload lives in `text`. `createdAt` is epoch seconds.
+ */
+data class ActivityItem(
+    val id: Int,
+    val createdAt: Long,
+    val type: String,           // "list" | "text"
+    val progress: Int?,          // list: episode/chapter reached
+    val status: String?,         // list: AniList status text, e.g. "watched episode"
+    val likeCount: Int = 0,
+    val replyCount: Int = 0,
+    val mediaId: Int?,
+    val mediaTitle: String?,
+    val mediaCover: String?,
+    val mediaType: String?,      // "ANIME" | "MANGA"
+    val text: String?,           // text: the posted message
 )
 
 /**

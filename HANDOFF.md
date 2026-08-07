@@ -2,8 +2,8 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.7](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.7)
-> **Working tree:** v1.5.7 polish pass: (1) Profile: the header's duplicate settings gear is gone (the Settings tab already has the gear icon); Overview now leads with quick stats (episodes/days/mean) + a favorites cover strip; Activity is paged (12 per page, "Show more" button) instead of one infinite scroll; tab bodies were tightened (20→16dp padding, 16→12dp spacers). (2) Home: time-of-day greeting header + favorites strip. (3) Watchlist cards are bigger (68×98 poster vs 56×80) with the rounded end-cap dot removed from progress bars (StrokeCap.Butt). (4) The two corner icons are now unambiguous: funnel (FilterAlt) = filter, arrows (SwapVert) = sort. (5) Detail: the "TRACKING" section header and the naked "Elo 1500" number are gone. (6) Tier list now ranks by your out-of-10 score — tiers sort by personalScore, headers show the tier's score range, and Elo is only a hidden tiebreaker.
+> **Latest documented release:** [v1.5.8](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.8)
+> **Working tree:** v1.5.8 profile pass: (1) Profile tab row is pure icons — the pill labels (Overview/Activity/Stats/Settings) were dropped; the "N entries in your list" subtitle under the username is gone. (2) Stats tab revamped: the duplicated "AniList stats" card and community-mean row are removed, the year split is gone, and tier/genre/format breakdowns now render as AniHyou-style proportional bars. (3) Activity tab now fetches the real AniList activity feed (ListActivity/TextActivity) with per-row detail — "You watched episode 5 of …", avatar, time ago, like/reply counts, cover thumbnail — falling back to the local edit log offline/unsigned-in.
 > **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
 > **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
 > **Client ID:** 46025  
