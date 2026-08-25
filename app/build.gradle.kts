@@ -16,6 +16,25 @@ val anilistLocalProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+/*
+ * Release signing credentials. Read from `keystore.properties` (gitignored)
+ * or environment variables — whichever is present — so the same script works
+ * locally and in CI. Add to keystore.properties:
+ *   MANGOLIST_STORE_FILE=release.keystore
+ *   MANGOLIST_STORE_PASSWORD=...
+ *   MANGOLIST_KEY_ALIAS=mangolist
+ *   MANGOLIST_KEY_PASSWORD=...
+ * If none are set, release builds fall back to the debug key so a fresh clone
+ * can always produce an installable sideload APK.
+ */
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(key: String): String? =
+    System.getenv(key)?.takeIf { it.isNotBlank() } ?: keystoreProps.getProperty(key)
+val hasReleaseKeystore = signingValue("MANGOLIST_STORE_FILE") != null
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -33,8 +52,10 @@ android {
         applicationId = "com.slippedpenguin.mangolist"
         minSdk = 26      // Covers ~95% of active devices; required by Coil 3 / Material You deps
         targetSdk = 35
-        versionCode = 38
-        versionName = "1.5.8"
+        // Overridable from the CLI so release.yml can derive both values from
+        // the pushed tag:  gradle assembleRelease -PversionCode=N -PversionName=X.Y.Z
+        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 38
+        versionName = (findProperty("versionName") as String?) ?: "1.5.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
@@ -61,17 +82,32 @@ android {
         )
     }
 
+    signingConfigs {
+        create("release") {
+            // Only populated when real keystore credentials exist; otherwise
+            // left unset and the release buildType falls back to debug below.
+            if (hasReleaseKeystore) {
+                storeFile = rootProject.file(signingValue("MANGOLIST_STORE_FILE")!!)
+                storePassword = signingValue("MANGOLIST_STORE_PASSWORD")
+                keyAlias = signingValue("MANGOLIST_KEY_ALIAS")
+                keyPassword = signingValue("MANGOLIST_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // v1 is personal-use sideload: keep minify off, leave the debug-signed APK flow
-            // (a proper release keystore is a v1.x concern, not the first scaffold).
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Debug-signed for now → configures a temp .jks in CI; revisit for v1.x.
-            signingConfig = signingConfigs.getByName("debug")
+            // Real keystore when configured (CI / local keystore.properties);
+            // debug-signed fallback keeps first-clone builds installable.
+            signingConfig = signingConfigs.getByName(
+                if (hasReleaseKeystore) "release" else "debug"
+            )
         }
     }
 
@@ -112,10 +148,10 @@ apollo {
         // registration here, codegen errors with "No schema found" because
         // Apollo validates at config / task-execution time BEFORE the
         // download task has had a chance to populate the file.
-        schemaFiles.from(files("$projectDir/app/src/main/graphql/schema.graphqls"))
+        schemaFiles.from(files("$projectDir/src/main/graphql/schema.graphqls"))
         introspection {
             endpointUrl.set("https://graphql.anilist.co")
-            schemaFile.set(file("$projectDir/app/src/main/graphql/schema.graphqls"))
+            schemaFile.set(file("$projectDir/src/main/graphql/schema.graphqls"))
         }
     }
 }
@@ -166,6 +202,10 @@ dependencies {
 
     // Background work — auto-push dirty local edits to AniList
     implementation(libs.androidx.work.runtime.ktx)
+
+    // Local JVM unit tests (EloEngine, sync merge logic, score mapping)
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
 
 // Wire Apollo codegen to depend on the introspection download so codegen

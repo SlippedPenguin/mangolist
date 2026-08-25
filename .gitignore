@@ -25,6 +25,7 @@ captures/
 # Keystores — never commit signing keys, even debug ones.
 *.jks
 *.keystore
+keystore.properties
 
 # OS junk
 Thumbs.db

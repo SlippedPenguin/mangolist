@@ -25,9 +25,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * the single `anime_entries` table holds both anime and manga. Same
  * destructive-Migration caveat — tier/elo on every v3 row must be
  * preserved. Both MIGRATION_2_3 and MIGRATION_3_4 are explicit ALTER
- * statements; the `fallbackToDestructiveMigration()` is left wired up as
- * a last-resort safety net for *unknown* future migrations, not for
- * known-good ones.
+ * statements. `fallbackToDestructiveMigration()` was deliberately REMOVED
+ * (v1.5.x): a missing migration must crash loudly in development rather
+ * than silently wipe tier/elo rankings in production.
  */
 @Database(
     entities = [AnimeEntry::class],

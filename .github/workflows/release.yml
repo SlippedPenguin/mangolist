@@ -8,9 +8,13 @@ name: Release APK
 # fly, and then runs `gradle assembleRelease`. You get the same inflated cache
 # benefits without having to commit a binary jar.
 #
-# Signing: debug keystore only, so the APK installs via sideload but is NOT
-# Play-Store-ready. Swap in a real release keystore before any public
-# distribution (a v1.x concern).
+# Signing: a real release keystore is decoded from the base64 secret
+# RELEASE_KEYSTORE_BASE64 (plus the three password/alias secrets) whenever
+# they exist. Without them the build falls back to debug-signing so a fresh
+# fork can always produce an installable sideload APK.
+#
+# Versioning: versionName comes from the pushed tag (v1.5.8 -> "1.5.8") and
+# versionCode from total commit count — both monotonic, never hand-edited.
 
 on:
   push:
@@ -28,6 +32,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so commit-count -> versionCode works
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -55,6 +61,33 @@ jobs:
           anilist.redirect.uri=com.slippedpenguin.mangolist://callback
           EOF
 
+      # Decode the release keystore from secrets when configured. Skipped
+      # cleanly otherwise — app/build.gradle.kts then signs with the debug key.
+      - name: Configure release signing
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.MANGOLIST_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.MANGOLIST_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.MANGOLIST_KEY_PASSWORD }}
+        run: |
+          if [ -z "$RELEASE_KEYSTORE_BASE64" ]; then
+            echo "No RELEASE_KEYSTORE_BASE64 secret set — falling back to debug signing."
+            exit 0
+          fi
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > release.keystore
+          cat > keystore.properties <<EOF
+          MANGOLIST_STORE_FILE=release.keystore
+          MANGOLIST_STORE_PASSWORD=$RELEASE_STORE_PASSWORD
+          MANGOLIST_KEY_ALIAS=$RELEASE_KEY_ALIAS
+          MANGOLIST_KEY_PASSWORD=$RELEASE_KEY_PASSWORD
+          EOF
+
+      # Tag v1.2.3 -> versionName "1.2.3"; versionCode = monotonic commit count.
+      - name: Derive version from tag
+        run: |
+          echo "VERSION_NAME=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+
       # Pull the live AniList GraphQL schema before assembly. The
       # `downloadAnilistApolloSchemaFromIntrospection` task writes to the path
       # configured by the apollo{} block in app/build.gradle.kts. We always
@@ -67,8 +100,15 @@ jobs:
       # Gradle into PATH on the runner, so calling `gradle` works without
       # committing the wrapper jar / scripts. Same Gradle pin (8.11.1) as
       # gradle-wrapper.properties.
+      - name: Run unit tests
+        run: gradle --no-daemon testReleaseUnitTest ${{ runner.debug == 'true' && '--info' || '' }}
+
       - name: Build release APK
-        run: gradle --no-daemon assembleRelease ${{ runner.debug == 'true' && '--info' || '' }}
+        run: >-
+          gradle --no-daemon assembleRelease
+          "-PversionName=$VERSION_NAME"
+          "-PversionCode=$VERSION_CODE"
+          ${{ runner.debug == 'true' && '--info' || '' }}
 
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2

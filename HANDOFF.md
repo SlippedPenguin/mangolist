@@ -3,7 +3,8 @@
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
 > **Latest documented release:** [v1.5.8](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.8)
-> **Working tree:** v1.5.8 profile pass: (1) Profile tab row is pure icons — the pill labels (Overview/Activity/Stats/Settings) were dropped; the "N entries in your list" subtitle under the username is gone. (2) Stats tab revamped: the duplicated "AniList stats" card and community-mean row are removed, the year split is gone, and tier/genre/format breakdowns now render as AniHyou-style proportional bars. (3) Activity tab now fetches the real AniList activity feed (ListActivity/TextActivity) with per-row detail — "You watched episode 5 of …", avatar, time ago, like/reply counts, cover thumbnail — falling back to the local edit log offline/unsigned-in.
+> **Working tree:** post-reconciliation main — `main` fast-forwarded to the v1.5.8 line, the valuable sync-fix commit from the abandoned origin/main fork cherry-picked on top (newer-wins sync merge, NET_CAPABILITY_VALIDATED, destructive Room migration removed), duplicate DAO overload cleaned up.
+> **Release engineering:** release APKs are now signed with a real keystore when CI secrets exist (`RELEASE_KEYSTORE_BASE64` + password/alias secrets) and fall back to debug-signing otherwise; versionName/versionCode are derived from the pushed tag in CI (`-PversionName/-PversionCode`); R8 minify + resource shrinking enabled; unit-test gate (`testReleaseUnitTest`) runs before assembly; Apollo schema pinned at `app/src/main/graphql/schema.graphqls`.
 > **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
 > **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
 > **Client ID:** 46025  
