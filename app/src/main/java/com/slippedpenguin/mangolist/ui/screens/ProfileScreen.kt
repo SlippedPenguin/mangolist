@@ -712,7 +712,9 @@ private fun ActivityTab(
     entries: List<AnimeEntry>,
     onNavigateDetail: (Int, String) -> Unit,
 ) {
-    val app = remember { LocalContext.current.applicationContext as AnimeApp }
+    // LocalContext.current is @Composable — read it outside the remember lambda.
+    val context = LocalContext.current
+    val app = remember(context) { context.applicationContext as AnimeApp }
 
     // null = loading; empty list = loaded but nothing (fall back to local).
     var activities by remember { mutableStateOf<List<ActivityItem>?>(null) }
