@@ -48,6 +48,7 @@ import com.slippedpenguin.mangolist.ui.screens.DetailScreen
 import com.slippedpenguin.mangolist.ui.screens.HomeScreen
 import com.slippedpenguin.mangolist.ui.screens.MangaTabScreen
 import com.slippedpenguin.mangolist.ui.screens.ProfileScreen
+import com.slippedpenguin.mangolist.ui.screens.RankHeadToHeadScreen
 import com.slippedpenguin.mangolist.ui.screens.TiersScreen
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.Border
@@ -239,6 +240,8 @@ fun MangoNavRoot(navController: NavHostController = rememberNavController()) {
             composable(BottomDest.Manga.route)   { MangaTabScreen(navController) }
             composable(BottomDest.Profile.route) { ProfileScreen(navController) }
             composable("tiers")                  { TiersScreen(navController) }
+            // v1.7: head-to-head batch-ranking of unranked titles.
+            composable("rank_h2h")               { RankHeadToHeadScreen(navController) }
             composable(
                 route = "detail/{mediaType}/{anilistId}",
                 arguments = listOf(

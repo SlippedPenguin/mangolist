@@ -1,6 +1,8 @@
 package com.slippedpenguin.mangolist.ui.screens
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,14 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,11 +27,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -42,19 +40,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.EloEngine
 import com.slippedpenguin.mangolist.data.ScoreScale
+import com.slippedpenguin.mangolist.data.TierListModel
+import com.slippedpenguin.mangolist.data.TierSection
 import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.AnimeCard
+import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextPrimary
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
@@ -62,25 +67,34 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
 import kotlinx.coroutines.launch
 
 /*
- * Tiers — v1.2 simplification.
+ * Tiers — v1.7 drag & drop rebuild.
  *
- *   - Five rows (S / A / B / C / D) + an Unranked bucket. Each row
- *     sorted by Elo descending. Header shows the tier letter + count +
- *     elo range hint.
+ *   - Ranking is now a single gesture: press-hold a card and drag it into
+ *     any tier row (or within its tier). The list live-reorders under the
+ *     finger and the drop persists immediately. The v1.2 long-press →
+ *     bottom-sheet → tap detour is gone — that detour was the friction.
+ *   - "Unrank" happens by dragging into the Unranked bucket (or via the
+ *     Detail screen's tracking card).
+ *   - A "Rank unranked head-to-head" button opens the h2h flow
+ *     (RankHeadToHeadScreen) for batch-ranking a fresh season one tap at
+ *     a time; the one-tap "Rank from my ratings" seed remains.
  *
- *   - **vs-mode removed.** v0.5 had a 3-round head-to-head dialog where
- *     picking a tier with ≥ 3 opponents would open VsModeDialog and
- *     walk the user through 3 picks to settle the entry's Elo. The user
- *     flagged tier-list as "kinda wack" — vs-mode was the wack part —
- *     so we drop the entire flow: picking a tier from the bottom sheet
- *     commits immediately with `elo = INITIAL_ELO`. No more 3-round
- *     horse-trading ceremony. The local Elo engine still runs vs-mode
- *     for any entry that already has a starting Elo from a previous
- *     version (EloEngine.update is unchanged and still used by tests),
- *     but the UI no longer surfaces the dialog.
- *
- *   - Tier letters stay as S/A/B/C/D (user feedback wanted the existing
- *     labels preserved, only the ceremony simplified).
+ * Implementation shape:
+ *   - All reorder math lives in the pure TierListModel (unit-tested in CI).
+ *     This file is the gesture shell.
+ *   - Single LazyColumn through the whole drag: switching layouts mid-gesture
+ *     would dispose the node holding the pointer stream and kill the drag.
+ *     While a drag is active the DAO flows are frozen into a snapshot (Room
+ *     updates can't yank rows mid-gesture) and each tier section renders one
+ *     extra DropZone item after its last row — that zone is both the visual
+ *     drop indicator (it grows and lights up when it's the pending target)
+ *     and the hit target for "insert at end of tier", which is how empty
+ *     tiers accept cards.
+ *   - Row/dropzone bounds are tracked via onGloballyPositioned and validated
+ *     against the current sections, so stale bounds from scrolled-away rows
+ *     can never produce a phantom target.
+ *   - Ranking writes never touch updatedAt (tier/elo/tierRank are
+ *     local-only — bumping it would drain no-op pushes to AniList).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,14 +113,97 @@ fun TiersScreen(navController: NavController) {
     val userId      by app.tokenStore.userId.collectAsState(initial = null)
     val scoreScale by app.tokenStore.scoreScale.collectAsState(initial = ScoreScale.Default)
 
-    // v1.5.1: count titles that have a personal score but no tier yet —
-    // that's what the "Rank from my ratings" button can seed in one tap.
+    // v1.5.1: titles that have a personal score but no tier yet — the
+    // "Rank from my ratings" seed can rank these in one tap.
     val scoredUnranked = remember(allEntries) {
         allEntries.count { it.tier == null && (it.personalScore ?: 0) > 0 }
     }
+    // v1.7: the h2h pool — every title without a tier yet.
+    val unrankedCount = allEntries.count { it.tier == null }
 
+    // ---- drag state ----
+    // Non-null while a drag is active: the frozen snapshot the gesture
+    // mutates. Null otherwise — the UI then renders straight from Room flows.
+    var dragSections by remember { mutableStateOf<List<TierSection>?>(null) }
+    var dragEntryId by remember { mutableStateOf<Int?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
-    var longPressEntry by remember { mutableStateOf<AnimeEntry?>(null) }
+    // Bounds in root coordinates, refreshed on every layout pass.
+    val rowBounds = remember { mutableMapOf<Int, Rect>() }
+    val dropZoneBounds = remember { mutableMapOf<String?, Rect>() }
+    val headerBounds = remember { mutableMapOf<String?, Rect>() }
+
+    val flowSections = TierListModel.sectionsFrom(
+        EloEngine.TIERS,
+        EloEngine.TIERS.associateWith { byTier[it]?.value.orEmpty() },
+        unranked,
+    )
+    val displaySections = dragSections ?: flowSections
+    val dragActive = dragEntryId != null
+
+    // The section the dragged card currently sits in (for drop-zone highlight).
+    val draggedSection: String? = dragEntryId?.let { id ->
+        displaySections.firstOrNull { s -> s.entries.any { it.anilistId == id } }?.tier
+    }
+
+    fun resolveDropTarget(fingerY: Float, draggedId: Int): Pair<String?, Int>? {
+        // 1) A row under the finger (skipping the dragged card itself, and
+        //    rows that no longer exist in any section) = insert above it.
+        for ((id, rect) in rowBounds) {
+            if (id == draggedId) continue
+            if (fingerY >= rect.top && fingerY <= rect.bottom) {
+                val section = displaySections.firstOrNull { s ->
+                    s.entries.any { it.anilistId == id }
+                } ?: continue
+                val idx = section.entries.indexOfFirst { it.anilistId == id }
+                return section.tier to idx
+            }
+        }
+        // 2) A tier drop zone = insert at the end of that tier. Skipped for
+        //    the tier the card already sits in (no-op move).
+        for ((tier, rect) in dropZoneBounds) {
+            if (tier == draggedSection) continue
+            if (fingerY >= rect.top && fingerY <= rect.bottom) {
+                val size = displaySections.firstOrNull { it.tier == tier }?.entries?.size ?: 0
+                return tier to size
+            }
+        }
+        // 3) A tier header (empty tiers have their drop zone right below,
+        //    but headers are the wider, easier target).
+        for ((tier, rect) in headerBounds) {
+            if (fingerY >= rect.top && fingerY <= rect.bottom) return tier to 0
+        }
+        return null
+    }
+
+    fun startDrag(entry: AnimeEntry) {
+        dragEntryId = entry.anilistId
+        // Freeze the flows into the mutable gesture snapshot.
+        dragSections = flowSections
+    }
+
+    fun dragTo(fingerY: Float) {
+        val id = dragEntryId ?: return
+        val current = displaySections
+        val target = resolveDropTarget(fingerY, id) ?: return
+        val currentSpot = current.firstOrNull { s -> s.entries.any { it.anilistId == id } }
+            ?.let { s -> s.tier to s.entries.indexOfFirst { it.anilistId == id } }
+        if (currentSpot != null && currentSpot != target) {
+            dragSections = TierListModel.move(current, id, target.first, target.second)
+        }
+    }
+
+    fun endDrag() {
+        val snapshot = dragSections
+        val id = dragEntryId
+        if (snapshot != null && id != null) {
+            val rows = TierListModel.commitRows(snapshot, id)
+            if (rows.isNotEmpty()) {
+                scope.launch { rows.forEach { dao.update(it) } }
+            }
+        }
+        dragSections = null
+        dragEntryId = null
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         IconButton(
@@ -151,172 +248,81 @@ fun TiersScreen(navController: NavController) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(vertical = 8.dp),
+                userScrollEnabled = !dragActive,
             ) {
+                // Intro card stays composed during a drag (hidden, not removed)
+                // so rows don't shift out from under the finger at drag start.
                 item(key = "tier_intro") {
-                    TierIntroCard(
-                        scoredUnranked = scoredUnranked,
-                        onAutoRank = {
-                            scope.launch {
-                                val scorable = dao.getAll()
-                                    .filter { it.tier == null && (it.personalScore ?: 0) > 0 }
-                                if (scorable.isEmpty()) return@launch
-                                scorable.forEach { e ->
-                                    val score = e.personalScore
-                                    // v1.5.1: deliberately DON'T bump updatedAt —
-                                    // tier/elo are local-only (never uploaded), so
-                                    // touching updatedAt would flag every ranked
-                                    // title as "pending sync" and trigger a wave
-                                    // of no-op pushes to AniList.
-                                    dao.update(
-                                        e.copy(
-                                            tier = EloEngine.tierForScore(score),
-                                            elo = EloEngine.eloForScore(score),
+                    if (!dragActive) {
+                        TierIntroCard(
+                            scoredUnranked = scoredUnranked,
+                            unrankedCount = unrankedCount,
+                            onAutoRank = {
+                                scope.launch {
+                                    val scorable = dao.getAll()
+                                        .filter { it.tier == null && (it.personalScore ?: 0) > 0 }
+                                    if (scorable.isEmpty()) return@launch
+                                    scorable.forEach { e ->
+                                        val score = e.personalScore
+                                        // v1.5.1: deliberately DON'T bump updatedAt —
+                                        // tier/elo are local-only (never uploaded), so
+                                        // touching updatedAt would flag every ranked
+                                        // title as "pending sync" and trigger a wave
+                                        // of no-op pushes to AniList.
+                                        dao.update(
+                                            e.copy(
+                                                tier = EloEngine.tierForScore(score),
+                                                elo = EloEngine.eloForScore(score),
+                                            )
                                         )
-                                    )
+                                    }
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Ranked ${scorable.size} titles from your ratings",
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
                                 }
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Ranked ${scorable.size} titles from your ratings",
-                                    android.widget.Toast.LENGTH_SHORT,
-                                ).show()
-                            }
-                        },
-                    )
+                            },
+                            onRankHeadToHead = { navController.navigate("rank_h2h") },
+                        )
+                    }
                 }
-                EloEngine.TIERS.forEach { tier ->
-                    val entries = byTier[tier]?.value ?: emptyList()
-                    item(key = "header_$tier") {
-                        // v1.5.7: header shows the tier's score range on the
-                        // user's scale (e.g. "8.5 – 9.5 / 10") instead of an
-                        // opaque Elo band.
-                        val scores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
-                        val rangeText = if (scores.isNotEmpty()) {
-                            "${formatScore(scores.min(), scoreScale)} – ${formatScore(scores.max(), scoreScale)}"
-                        } else null
+                displaySections.forEach { section ->
+                    val isTargetZone = dragActive && draggedSection != section.tier
+                    item(key = "header_${section.tier ?: "unranked"}") {
                         TierHeader(
-                            tier = tier,
-                            count = entries.size,
-                            rangeText = rangeText,
+                            tier = section.tier,
+                            count = section.entries.size,
+                            rangeText = scoreRangeText(section.entries, scoreScale),
+                            modifier = Modifier.onGloballyPositioned {
+                                headerBounds[section.tier] = it.boundsInRoot()
+                            },
                         )
                     }
-                    items(entries, key = { it.anilistId }) { entry ->
-                        AnimeCard(
+                    items(section.entries, key = { it.anilistId }) { entry ->
+                        TierCard(
                             entry = entry,
-                            rankText = rankWithinTierText(entry, entries),
-                            onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                            onLongClick = { longPressEntry = entry },
+                            sectionEntries = section.entries,
+                            isDragging = dragEntryId == entry.anilistId,
+                            dragActive = dragActive,
+                            navController = navController,
+                            rowBounds = rowBounds,
+                            onDragStart = ::startDrag,
+                            onDrag = ::dragTo,
+                            onDragEnd = ::endDrag,
                         )
                     }
-                }
-                item(key = "header_unranked") {
-                    TierHeader(
-                        tier = null,
-                        count = unranked.size,
-                        rangeText = null,
-                    )
-                }
-                items(unranked, key = { it.anilistId }) { entry ->
-                    AnimeCard(
-                        entry = entry,
-                        rankText = null,
-                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                        onLongClick = { longPressEntry = entry },
-                    )
-                }
-            }
-        }
-    }
-
-    // Long-press → ModalBottomSheet with the five tier buttons. Picking
-    // any tier commits the entry at INITIAL_ELO — no head-to-head rounds.
-    val sheetFor = longPressEntry
-    if (sheetFor != null) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { longPressEntry = null },
-            sheetState = sheetState,
-        ) {
-            Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                Text(
-                    text = "Rank “${sheetFor.title.take(28)}${if (sheetFor.title.length > 28) "…" else ""}” into…",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp),
-                )
-                EloEngine.TIERS.forEach { tier ->
-                    val inTier = byTier[tier]?.value.orEmpty()
-                    TextButton(
-                        onClick = {
-                            val entry = sheetFor
-                            longPressEntry = null
-                            // Direct commit — no vs-mode ceremony. The
-                            // entry's previous tier (if any) is replaced;
-                            // its previous Elo is reset to INITIAL_ELO so
-                            // tier rank within the new tier starts fresh.
-                            scope.launch {
-                                dao.update(
-                                    entry.copy(
-                                        tier = tier,
-                                        elo = EloEngine.INITIAL_ELO,
-                                        updatedAt = System.currentTimeMillis(),
-                                    )
-                                )
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = tier,
-                                style = MaterialTheme.typography.titleLarge,
-                                color = tierColor(tier),
-                                fontWeight = FontWeight.ExtraBold,
-                            )
-                            Text(
-                                text = if (inTier.isEmpty()) "(empty · first in tier)" else "${inTier.size} in tier",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted,
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (sheetFor.tier == tier) {
-                                Text(
-                                    text = "current",
-                                    color = TextMuted,
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            }
-                        }
+                    item(key = "drop_${section.tier ?: "unranked"}") {
+                        DropZone(
+                            tier = section.tier,
+                            // Highlight the zone when the dragged card could
+                            // land here (any tier other than its own).
+                            highlighted = isTargetZone,
+                            modifier = Modifier.onGloballyPositioned {
+                                dropZoneBounds[section.tier] = it.boundsInRoot()
+                            },
+                        )
                     }
-                }
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            sheetFor.let { e ->
-                                dao.update(
-                                    e.copy(
-                                        tier = null,
-                                        elo = EloEngine.INITIAL_ELO,
-                                        updatedAt = System.currentTimeMillis(),
-                                    )
-                                )
-                            }
-                            longPressEntry = null
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                ) {
-                    Text("Unranked", color = TextSecondary)
-                }
-                TextButton(
-                    onClick = { longPressEntry = null },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                ) {
-                    Text("Cancel", color = TextSecondary)
                 }
             }
         }
@@ -324,15 +330,130 @@ fun TiersScreen(navController: NavController) {
 }
 
 /*
- * TierIntroCard — v1.5.1. Explains how tiers persist (private, on-device
- * only — never pushed to AniList) and offers the one-tap "Rank from my
- * ratings" seed that maps each title's existing personalScore onto the
- * S/A/B/C/D ladder. Answers "how will it save into the app?": tier + elo
- * live in the local Room row, so they survive sync and restarts, but stay
- * invisible to AniList.
+ * TierCard — AnimeCard wrapped in the drag gesture layer. A long-press
+ * starts the drag (the card's own combinedClickable keeps handling taps);
+ * during the drag the wrapper reports the finger's root Y so the screen can
+ * re-target the drop position, and the dragged card visually lifts (scale).
+ * While ANY drag is active, taps on other cards are ignored — the gesture
+ * owns the screen until it ends.
  */
 @Composable
-private fun TierIntroCard(scoredUnranked: Int, onAutoRank: () -> Unit) {
+private fun TierCard(
+    entry: AnimeEntry,
+    sectionEntries: List<AnimeEntry>,
+    isDragging: Boolean,
+    dragActive: Boolean,
+    navController: NavController,
+    rowBounds: MutableMap<Int, Rect>,
+    onDragStart: (AnimeEntry) -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+) {
+    val rankText = rankWithinTierText(entry, sectionEntries)
+    var cardModifier = Modifier
+        .onGloballyPositioned { rowBounds[entry.anilistId] = it.boundsInRoot() }
+    if (isDragging) {
+        cardModifier = cardModifier.graphicsLayer {
+            scaleX = 1.03f
+            scaleY = 1.03f
+        }
+    }
+    Box(
+        modifier = cardModifier.pointerDragInput(
+            onDragStart = { onDragStart(entry) },
+            onDrag = onDrag,
+            onDragEnd = onDragEnd,
+        ),
+    ) {
+        AnimeCard(
+            entry = entry,
+            rankText = rankText,
+            onClick = if (dragActive) ({}) else ({ navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") }),
+            onLongClick = {},
+        )
+    }
+}
+
+/*
+ * DropZone — the per-tier drop target rendered after each tier's last row.
+ * Idle it is a thin invisible spacer; while a drag is in flight it grows
+ * and shows the tier-colored dashed bar, so the user can see exactly where
+ * the card will land. Its bounds double as the "insert at end of tier"
+ * hit area (this is how empty tiers accept cards).
+ */
+@Composable
+private fun DropZone(tier: String?, highlighted: Boolean, modifier: Modifier = Modifier) {
+    val accent = tierColor(tier)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .animateContentSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (highlighted) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accent.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "drop into ${tier ?: "Unranked"}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accent,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        } else {
+            Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+/*
+ * pointerDragInput — tiny helper wrapping detectDragGesturesAfterLongPress
+ * into a reusable Modifier. Lives here because only the tierlist needs it.
+ * The long-press threshold is the system default (~400ms), so the gesture
+ * reads as "hold, then move" and never fights plain taps.
+ */
+private fun Modifier.pointerDragInput(
+    onDragStart: () -> Unit,
+    onDrag: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+): Modifier = this.then(
+    Modifier.pointerInput(Unit) {
+        detectDragGesturesAfterLongPress(
+            onDragStart = { onDragStart() },
+            onDrag = { change, _ -> onDrag(change.positionInRoot().y) },
+            onDragEnd = onDragEnd,
+            onDragCancel = onDragEnd,
+        )
+    }
+)
+
+private fun scoreRangeText(entries: List<AnimeEntry>, scale: ScoreScale): String? {
+    val scores = entries.mapNotNull { it.personalScore }.filter { it > 0 }
+    return if (scores.isNotEmpty()) {
+        "${formatScore(scores.min(), scale)} – ${formatScore(scores.max(), scale)}"
+    } else null
+}
+
+/*
+ * TierIntroCard — v1.7. Explains how tiers persist (private, on-device
+ * only — never pushed to AniList) and offers two ranking entry points:
+ * the head-to-head session for batch-ranking unranked titles, and the
+ * one-tap "Rank from my ratings" seed (v1.5.1).
+ */
+@Composable
+private fun TierIntroCard(
+    scoredUnranked: Int,
+    unrankedCount: Int,
+    onAutoRank: () -> Unit,
+    onRankHeadToHead: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -350,38 +471,43 @@ private fun TierIntroCard(scoredUnranked: Int, onAutoRank: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Text(
                 text = "Tiers live in your local list and are never uploaded to AniList. " +
-                    if (scoredUnranked > 0) "You have $scoredUnranked rated titles waiting for a tier."
-                    else "Rate titles on their Detail screen, then rank them here in one tap.",
+                    "Hold a card and drag it into a tier — or rank unranked titles head-to-head below.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
             Spacer(Modifier.height(12.dp))
             Button(
-                onClick = onAutoRank,
-                enabled = scoredUnranked > 0,
+                onClick = onRankHeadToHead,
+                enabled = unrankedCount > 0,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    text = if (scoredUnranked > 0) "Rank $scoredUnranked from my ratings"
-                           else "No rated titles yet",
+                    text = if (unrankedCount > 0) "Rank $unranked unranked head-to-head"
+                           else "Everything's ranked",
                     fontWeight = FontWeight.SemiBold,
                 )
+            }
+            if (scoredUnranked > 0) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onAutoRank,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Rank $scoredUnranked from my ratings")
+                }
             }
         }
     }
 }
 
 /*
- * TierHeader — tier letter chip + count badge. v1.2 simplification: the
- * Elo range hint still appears in plain text (e.g. "1850–2050") so the
- * user retains a quick sense of where the tier sits, but the dialog no
- * longer drills down into vs-mode rounds.
+ * TierHeader — tier letter chip + count badge + score range.
  */
 @Composable
-private fun TierHeader(tier: String?, count: Int, rangeText: String?) {
+private fun TierHeader(tier: String?, count: Int, rangeText: String?, modifier: Modifier = Modifier) {
     val accent = tierColor(tier)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -413,19 +539,13 @@ private fun TierHeader(tier: String?, count: Int, rangeText: String?) {
                 .padding(horizontal = 8.dp, vertical = 2.dp),
         )
         Text(
-            text = rangeText?.let { "$it score" } ?: "long-press any card to rank",
+            text = rangeText?.let { "$it score" } ?: "hold & drag a card here",
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
         )
     }
 }
 
-/*
- * rankWithinTierText — "#3 of 8" style label for an entry inside its
- * tier. Sorted by Elo descending so #1 is the entry the user already
- * likes most in that tier. Returns null for the unranked bucket (the
- * badge then falls back to a centered dash).
- */
 /*
  * formatScore — v1.5.7. Renders a stored 0-100 score on the user's scale
  * for the tier header range ("8.5" for out-of-10, "85" for out-of-100).
