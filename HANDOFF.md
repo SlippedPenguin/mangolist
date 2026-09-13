@@ -2,7 +2,7 @@
 
 > **Target:** AniHyou-parity Android anime tracker app  
 > **Repo:** https://github.com/SlippedPenguin/mangolist  
-> **Latest documented release:** [v1.5.8](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.5.8)
+> **Latest documented release:** [v1.7.0](https://github.com/SlippedPenguin/mangolist/releases/tag/v1.7.0)
 > **Working tree:** post-reconciliation main — `main` fast-forwarded to the v1.5.8 line, the valuable sync-fix commit from the abandoned origin/main fork cherry-picked on top (newer-wins sync merge, NET_CAPABILITY_VALIDATED, destructive Room migration removed), duplicate DAO overload cleaned up.
 > **Release engineering:** release APKs are now signed with a real keystore when CI secrets exist (`RELEASE_KEYSTORE_BASE64` + password/alias secrets) and fall back to debug-signing otherwise; versionName/versionCode are derived from the pushed tag in CI (`-PversionName/-PversionCode`); R8 minify + resource shrinking enabled; unit-test gate (`testReleaseUnitTest`) runs before assembly; Apollo schema pinned at `app/src/main/graphql/schema.graphqls`.
 > **Deprecated releases:** none — all previous broken v1.5.0–v1.5.5 tags were repointed to stable builds.
@@ -264,6 +264,30 @@ Quick reference for what's new since the last documented release.
 - `ui/screens/AiringScreen.kt` — `AiringCard` avg-score badge.
 - `MainActivity.kt` — auth-redirect handler pulls both ANIME and MANGA lists.
 - `graphql/com/slippedpenguin/mangolist/queries.graphql` — `$type: MediaType = ANIME` on every list-style query; new `GetMangaReleases`.
+
+---
+
+## v1.7 deltas (since v1.6.1)
+
+| Area | v1.6.1 | v1.7 |
+|---|---|---|
+| Tierlist interaction | Long-press → bottom sheet → tap tier (commits at INITIAL_ELO) | **Drag & drop**: press-hold a card, drag into any tier (or within its tier), live reorder + tier-colored drop zones; drop commits tier + median-derived Elo + dense `tierRank`. The sheet is gone — that detour was the friction. |
+| Manual order | Score DESC, elo DESC only (v1.5.7) | `tierRank` column (Room v6, nullable): dragged rows sort ahead of never-dragged rows, which keep the score/elo default. Order survives restarts AND pull-syncs (`preserveLocalFields` keeps it). |
+| Head-to-head | Removed in v1.2 | Back, lightweight: "Rank N unranked head-to-head" → two cards side-by-side, tap the winner, next pair appears. Pure `RankSession` reducer over `EloEngine` (K=32); auto-lands candidates when nothing is ranked yet; skip supported. |
+| Ranking & sync | Long-press sheet bumped `updatedAt` → phantom pending-sync flags and no-op pushes to AniList | ALL ranking writes (drag, h2h, auto-rank) leave `updatedAt` untouched — pinned by unit test. |
+| SyncWorker | Enqueue only | `SyncWorker.cancel()` — sign-out drops queued auto-pushes before the token clears (a pending worker would fail-and-retry forever with no credentials). |
+| Logout | `TokenStore.clear()` wiped the whole DataStore, resetting the score-scale preference | Scoped clear: auth keys only; score scale survives sign-out. |
+| Airing cards | Cover-only (bannerImage fetched but unused) | 4dp gradient accent bar when the slot carries a banner (the long-deferred polish item). |
+| CI | Test gate only at tag time | `test.yml` — unit tests on every push to main (~3 min feedback loop; same JDK/Gradle pins as release.yml). |
+| Tests | 2 files (Elo engine, entry merge) | + `TierListModelTest` (11), + `RankSessionTest` (9), merge pins incl. `tierRank` preservation and ranking-write `updatedAt` neutrality. |
+
+**Code anchors for v1.7:**
+- `data/TierListModel.kt` — pure sections model (`move` / `commitRows` / `eloForLanding`); unit-testable, no Compose imports.
+- `data/RankSession.kt` — h2h session reducer (`start` / `choose` / `skip`); proposes tiers via `EloEngine.proposeTier` against the opponent-UPDATED ranked pool.
+- `ui/screens/TiersScreen.kt` — drag shell: LazyColumn never switches layout mid-gesture; drop probe = long-press anchor + accumulated pointer delta; visual translation = probe − current resting center (computed at draw time so the card stays glued to the finger across reorders).
+- `ui/screens/RankHeadToHeadScreen.kt` — h2h UI; persists `session.committedRows` per judgment.
+- `data/local/AnimeDatabase.kt` — `MIGRATION_5_6` (`ALTER TABLE anime_entries ADD COLUMN tierRank INTEGER`); additive, existing rows keep NULL.
+- `data/local/AnimeDao.kt` — `observeByTier` sorts `(tierRank IS NULL), tierRank, score DESC, elo DESC`.
 
 ---
 

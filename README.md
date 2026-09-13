@@ -16,7 +16,7 @@ I track a lot of anime. Star ratings don't capture how I actually rank shows —
 | Feature | Status | Notes |
 |---|---|---|
 | Watchlist (local Room DB) | ✅ v0.1 | Offline-first; survives reinstall via Android Auto Backup |
-| Adaptive Elo tierlist | ✅ Engine · ⏳ UI next | K-factor 32; tiers S/A/B/C/D; clamps 900–2100 |
+| Adaptive Elo tierlist | ✅ v1.7 | Drag & drop ranking + head-to-head batch mode; K-factor 32; tiers S/A/B/C/D; clamps 900–2100 |
 | AniList PIN OAuth login | 🔜 v0.2 | No client_id required for personal use |
 | Add anime via AniList search | 🔜 v0.2 | Typeahead against `graphql.anilist.co` |
 | Bidirectional AniList sync | 🔜 v0.2 | Last-write-wins |
