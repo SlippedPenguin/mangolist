@@ -105,7 +105,6 @@ import kotlinx.coroutines.launch
  *   - Ranking writes never touch updatedAt (local-only fields — bumping
  *     it would drain no-op pushes to AniList).
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TiersScreen(navController: NavController) {
     val context = LocalContext.current
@@ -377,7 +376,6 @@ private fun resolveDropTarget(
  * compact poster grid (FlowRow) on the right. The rail registers its bounds
  * as an "insert at start" drop zone for its tier.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TierBlock(
     section: TierSection,
@@ -475,7 +473,6 @@ private fun TierBlock(
  * poster + title; the wrapper owns tap + long-press-drag (same contract as
  * TierRowCard, so a tap opens Detail and a hold drags).
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TierMiniCard(
     entry: AnimeEntry,
