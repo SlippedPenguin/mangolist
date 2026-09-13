@@ -30,3 +30,14 @@ Plan: `tasks/plan.md` · Spec: `SPEC.md` — ✅ SHIPPED 2026-09-13 (v1.7.0 on G
 - Dock-clearance bottom padding on all scrolling screens
 - Drag tierlist kept as-is per user decision (clunky on phone; not removed)
 - 3 CI iterations (certs path, nested-comment, Brush overload) then green; APK published
+
+## v1.9.0 — small-element overhaul + one-tap tracking (shipped 2026-09-13)
+- Cross-referenced ManGo (4.6★, top dedicated tracker): one-tap tracking, poster grids, gestures
+- SwipeableRow: swipe right +1 / left −1 on every watchlist card (haptics)
+- AnimeCard: tap-to-+1 gradient progress pill; gradient hairline; shared geometry
+- Library grid view + toggle in header; poster cells with scrim + tier badge
+- Detail: real stepper (56dp circles, Bebas count, gradient progress bar); tile restyle
+- ProgressWrites.kt: single source of truth for +1/−1 semantics (auto-complete/undo/sync)
+- Insets: statusBarsPadding restored (S25 Ultra content-behind-cutout fix)
+- Smart features parked per user: notifications/widget later; swipe shipped now
+- 3 CI iterations to green; APK published
