@@ -1,30 +1,34 @@
 package com.slippedpenguin.mangolist.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 /*
- * MangoTheme — Compose entry point that wraps the app in a Material 3
- * themed surface area. v1 is dark-only (matches the HTML prototype's
- * design; light mode is a v1.x concern).
+ * MangoTheme — v1.8 OLED redesign.
  *
- * v1.5.0: expanded to a full M3 color scheme with the surface-container
- * ladder so the bottom nav, cards, and sheets render with layered depth
- * (Anihyou-style) instead of one flat surface color.
+ * Dark-only (this app is a night-tracking app; light mode remains a
+ * non-goal). The scheme maps the OLED ladder from Color.kt onto Material 3
+ * and adds an app-wide Shapes scale so every card/pill/sheet shares one
+ * geometry language instead of one-off RoundedCornerShape values.
  */
+
 private val MangoDarkColors = darkColorScheme(
     primary             = Accent,
-    onPrimary           = Color.White,
-    primaryContainer    = Accent.copy(alpha = 0.18f),
+    onPrimary           = Color(0xFF0A0A14),
+    primaryContainer    = Accent.copy(alpha = 0.16f),
     onPrimaryContainer  = Accent,
 
-    secondary           = TierC,
-    onSecondary         = Color(0xFF062e12),
-    secondaryContainer  = TierC.copy(alpha = 0.16f),
-    onSecondaryContainer = TierC,
+    secondary           = Accent2,
+    onSecondary         = Color(0xFF0A0A14),
+    secondaryContainer  = Accent2.copy(alpha = 0.16f),
+    onSecondaryContainer = Accent2,
 
     tertiary            = TierD,
     onTertiary          = Color(0xFF063a42),
@@ -39,7 +43,7 @@ private val MangoDarkColors = darkColorScheme(
     onSurfaceVariant    = TextSecondary,
     surfaceTint         = Accent,
 
-    // v1.5.0: layered surfaces for nav bar / cards / sheets.
+    // Layered surfaces for nav bar / cards / sheets.
     surfaceContainerLowest  = SurfaceContainerLowest,
     surfaceContainerLow     = SurfaceContainerLow,
     surfaceContainer        = SurfaceContainer,
@@ -55,6 +59,23 @@ private val MangoDarkColors = darkColorScheme(
     onErrorContainer    = StatusDropped,
 )
 
+/** App-wide shape scale — the redesign's shared geometry language. */
+private val MangoShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small      = RoundedCornerShape(12.dp),
+    medium     = RoundedCornerShape(16.dp),
+    large      = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+/** The brand gradient — periwinkle → violet. Every glow/banner uses this. */
+fun brandGradient(): Brush = Brush.linearGradient(listOf(AccentDeep, Accent2Deep))
+
+/** Softer horizontal wash for chips and nav accents. */
+fun brandGradientSoft(): Brush = Brush.horizontalGradient(
+    listOf(Accent.copy(alpha = 0.22f), Accent2.copy(alpha = 0.22f)),
+)
+
 @Composable
 fun MangoTheme(
     @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
@@ -62,7 +83,8 @@ fun MangoTheme(
 ) {
     MaterialTheme(
         colorScheme = MangoDarkColors,
-        typography = Typography,
+        typography = mangoTypography(),
+        shapes = MangoShapes,
         content = content,
     )
 }

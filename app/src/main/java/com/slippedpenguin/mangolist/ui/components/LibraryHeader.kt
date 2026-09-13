@@ -1,5 +1,6 @@
 package com.slippedpenguin.mangolist.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.slippedpenguin.mangolist.ui.theme.Accent
+import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 
 /**
@@ -62,8 +64,12 @@ fun LibraryHeader(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         colors = CardDefaults.cardColors(
+            // v1.8: flat on the black canvas, hairline-separated — the
+            // boxed-panel look is gone.
             containerColor = MaterialTheme.colorScheme.surface,
         ),
+        border = BorderStroke(1.dp, BorderSubtle),
+        shape = MaterialTheme.shapes.medium,
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(

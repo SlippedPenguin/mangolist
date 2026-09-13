@@ -1,6 +1,7 @@
 package com.slippedpenguin.mangolist.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +23,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -37,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,14 +50,27 @@ import com.slippedpenguin.mangolist.data.local.AnimeEntry
 import com.slippedpenguin.mangolist.ui.components.CoverImage
 import com.slippedpenguin.mangolist.ui.components.OfflineBanner
 import com.slippedpenguin.mangolist.ui.theme.Accent
-import com.slippedpenguin.mangolist.ui.theme.BgCardHover
+import com.slippedpenguin.mangolist.ui.theme.Accent2
+import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
+import com.slippedpenguin.mangolist.ui.theme.SurfaceContainerHigh
+import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import com.slippedpenguin.mangolist.ui.theme.brandGradient
+import com.slippedpenguin.mangolist.ui.theme.brandGradientSoft
 
-/**
- * Home dashboard: a quick read of the library and a clear route into tier
- * ranking. v1.5.5 dropped the "Pick up where you left off" list and the
- * timestamped "Recent activity" list — activity now lives on the Profile
- * Activity tab, keeping Home a clean at-a-glance dashboard.
+/*
+ * Home — v1.8 redesign.
+ *
+ * The old dashboard (boxed metric cards + generic shortcut card) read like
+ * a settings screen. The new Home leads with identity:
+ *
+ *   1. **Hero** — big Bebas greeting + one-line library summary.
+ *   2. **Stat row** — three inline numbers separated by hairlines (no cards).
+ *   3. **Continue strip** — active titles as posters (falls back to
+ *      Favorites, then the tier banner fills the space).
+ *   4. **Tier banner** — the brand-gradient call to action into the tier list.
+ *
+ * Same data sources as v1.5.7: one observeAll() Flow, greeting by hour.
  */
 @Composable
 fun HomeScreen(navController: NavController) {
@@ -64,7 +80,7 @@ fun HomeScreen(navController: NavController) {
     val userName by app.tokenStore.userName.collectAsState(initial = null)
 
     val inProgress = remember(entries) {
-        entries.count { it.status in listOf("watching", "paused", "repeating") }
+        entries.filter { it.status in listOf("watching", "paused", "repeating") }
     }
     val animeCount = remember(entries) { entries.count { it.mediaType == "ANIME" } }
     val mangaCount = remember(entries) { entries.count { it.mediaType == "MANGA" } }
@@ -73,44 +89,50 @@ fun HomeScreen(navController: NavController) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
     ) {
         item { OfflineBanner() }
-        item {
-            if (entries.isEmpty()) {
+
+        if (entries.isEmpty()) {
+            item {
                 WelcomeCard(
                     onProfile = { navController.navigate("profile") },
                     onExplore = { navController.navigate("anime?tab=1") },
                 )
-            } else {
-                // v1.5.7: greeting header + compact metrics instead of the
-                // old plain "Your library" title.
-                HomeDashboard(
-                    userName = userName,
-                    total = entries.size,
-                    inProgress = inProgress,
-                    ranked = rankedCount,
-                    animeCount = animeCount,
-                    mangaCount = mangaCount,
-                )
             }
-        }
-
-        // v1.5.7: favorites strip — tap a cover to open its detail screen.
-        if (favorites.isNotEmpty()) {
+        } else {
             item {
-                HomeFavoritesStrip(
-                    favorites = favorites.take(12),
-                    onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
+                HeroGreeting(
+                    userName = userName,
+                    summary = "$animeCount anime · $mangaCount manga",
                 )
+            }
+            item {
+                StatRow(
+                    stats = listOf(
+                        Triple(entries.size.toString(), "Titles", null),
+                        Triple(inProgress.size.toString(), "In progress", null),
+                        Triple(rankedCount.toString(), "Ranked", null),
+                    ),
+                )
+            }
+
+            // Continue strip: active titles first; favorites as fallback.
+            val continueItems = if (inProgress.isNotEmpty()) inProgress else favorites
+            if (continueItems.isNotEmpty()) {
+                item {
+                    PosterStrip(
+                        kicker = if (inProgress.isNotEmpty()) "Continue" else "Favorites",
+                        items = continueItems.take(12),
+                        onNavigateDetail = { id, type -> navController.navigate("detail/$type/$id") },
+                    )
+                }
             }
         }
 
-        // v1.5.2: tier shortcut moved above the fold so the tier list is
-        // reachable without scrolling past every active title.
         item {
-            TierShortcut(
+            TierBanner(
+                ranked = rankedCount,
                 onClick = { navController.navigate("tiers") },
             )
         }
@@ -118,84 +140,19 @@ fun HomeScreen(navController: NavController) {
 }
 
 @Composable
-private fun WelcomeCard(onProfile: () -> Unit, onExplore: () -> Unit) {
-    Card(
-        modifier = Modifier.padding(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(20.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Accent.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Accent)
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(
-                text = "Your anime corner, organized.",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-            )
-            Text(
-                text = "Connect AniList to bring your watchlist into MangoList, then track progress and build your tiers.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            Spacer(Modifier.height(18.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = onProfile) {
-                    Icon(Icons.Outlined.Person, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Connect")
-                }
-                OutlinedButton(onClick = onExplore) {
-                    Icon(Icons.Outlined.Explore, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text("Explore")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HomeDashboard(
-    userName: String?,
-    total: Int,
-    inProgress: Int,
-    ranked: Int,
-    animeCount: Int,
-    mangaCount: Int,
-) {
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-        // v1.5.7: time-of-day greeting + library subtitle (AniHyou-style).
+private fun HeroGreeting(userName: String?, summary: String) {
+    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
         Text(
             text = if (userName != null) "${timeGreeting()}, $userName" else timeGreeting(),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.displaySmall,
+            color = MaterialTheme.colorScheme.onBackground,
         )
         Text(
-            text = "$total titles · $animeCount anime · $mangaCount manga",
+            text = summary,
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary,
-            modifier = Modifier.padding(top = 3.dp),
+            modifier = Modifier.padding(top = 2.dp),
         )
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            DashboardMetric(total.toString(), "Titles", Modifier.weight(1f))
-            DashboardMetric(inProgress.toString(), "In progress", Modifier.weight(1f))
-            DashboardMetric(ranked.toString(), "Ranked", Modifier.weight(1f))
-        }
     }
 }
 
@@ -210,24 +167,66 @@ private fun timeGreeting(): String {
 }
 
 /*
- * HomeFavoritesStrip — v1.5.7. Horizontal row of favorite covers on Home.
- * Tap any cover to open its detail screen.
+ * StatRow — three inline numbers divided by hairlines. No card chrome:
+ * on a true-black canvas the numbers ARE the design.
  */
 @Composable
-private fun HomeFavoritesStrip(
-    favorites: List<AnimeEntry>,
+private fun StatRow(stats: List<Triple<String, String, Unit?>>) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        stats.forEachIndexed { index, (value, label, _) ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(34.dp)
+                        .background(BorderSubtle),
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Accent,
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextMuted,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PosterStrip(
+    kicker: String,
+    items: List<AnimeEntry>,
     onNavigateDetail: (Int, String) -> Unit,
 ) {
     Column {
-        SectionHeading(kicker = "Favorites", title = "Your top picks")
+        Text(
+            text = kicker.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = Accent,
+            modifier = Modifier.padding(start = 20.dp, top = 10.dp, bottom = 8.dp),
+        )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(favorites, key = { it.anilistId }) { entry ->
+            items(items, key = { it.anilistId }) { entry ->
                 Column(
                     modifier = Modifier
-                        .width(84.dp)
+                        .width(92.dp)
                         .clickable { onNavigateDetail(entry.anilistId, entry.mediaType) },
                 ) {
                     CoverImage(
@@ -235,10 +234,11 @@ private fun HomeFavoritesStrip(
                         contentDescription = entry.title,
                         label = entry.title,
                         modifier = Modifier
-                            .size(width = 84.dp, height = 118.dp)
-                            .clip(RoundedCornerShape(10.dp)),
+                            .size(width = 92.dp, height = 130.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, BorderSubtle, RoundedCornerShape(12.dp)),
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(5.dp))
                     Text(
                         text = entry.title,
                         style = MaterialTheme.typography.labelSmall,
@@ -252,70 +252,100 @@ private fun HomeFavoritesStrip(
     }
 }
 
+/*
+ * TierBanner — the one gradient element on Home. A full-bleed rounded card
+ * in the brand gradient with Bebas type: the tier list is this app's
+ * signature feature, so its entry point gets the loudest surface.
+ */
 @Composable
-private fun DashboardMetric(value: String, label: String, modifier: Modifier) {
+private fun TierBanner(ranked: Int, onClick: () -> Unit) {
+    val banner: Brush = brandGradient()
     Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(value, style = MaterialTheme.typography.titleLarge, color = Accent, fontWeight = FontWeight.Bold)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+        Row(
+            modifier = Modifier
+                .background(banner)
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "TIER LIST",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = androidx.compose.ui.graphics.Color.White,
+                )
+                Text(
+                    text = if (ranked > 0) "$ranked ranked — drag to perfect it" else "Rank what you've finished",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Icon(
+                imageVector = Icons.Outlined.Bolt,
+                contentDescription = null,
+                tint = androidx.compose.ui.graphics.Color.White,
+                modifier = Modifier.size(28.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun SectionHeading(kicker: String, title: String) {
-    Column(modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp)) {
-        Text(
-            text = kicker.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = Accent,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(top = 2.dp),
-        )
-    }
-}
-
-@Composable
-private fun TierShortcut(onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = BgCardHover),
-        shape = RoundedCornerShape(18.dp),
+private fun WelcomeCard(onProfile: () -> Unit, onExplore: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        // v1.5.4: single-line shortcut — no subtitle, and the icon uses the
-        // periwinkle Accent instead of the S-tier pink/red.
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(brandGradientSoft()),
+            contentAlignment = Alignment.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Accent.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center,
+            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Accent)
+        }
+        Spacer(Modifier.height(18.dp))
+        Text(
+            text = "Your anime corner,\norganized.",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = "Connect AniList to bring your watchlist into MangoList, then track progress and build your tiers.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+        Spacer(Modifier.height(20.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(
+                onClick = onProfile,
+                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = androidx.compose.ui.graphics.Color(0xFF0A0A14)),
             ) {
-                Icon(Icons.Outlined.Tune, contentDescription = null, tint = Accent)
+                Icon(Icons.Outlined.Person, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                Text("Connect")
             }
-            Text(
-                text = "Build your tier list",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-            )
-            Text("Open", color = Accent, style = MaterialTheme.typography.labelLarge)
+            OutlinedButton(onClick = onExplore) {
+                Icon(Icons.Outlined.Explore, contentDescription = null)
+                Spacer(Modifier.size(6.dp))
+                Text("Explore")
+            }
         }
     }
 }

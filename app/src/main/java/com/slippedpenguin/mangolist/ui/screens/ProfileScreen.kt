@@ -213,7 +213,7 @@ fun ProfileScreen(navController: NavController) {
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(16.dp),
+                            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),  // v1.8: dock clearance
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                     // v1.5.7: Overview is no longer a bare greeting + two
@@ -356,7 +356,7 @@ fun ProfileScreen(navController: NavController) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),  // v1.8: dock clearance
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // v1.5.8: revamped stats — one clean summary card plus
@@ -458,7 +458,7 @@ fun ProfileScreen(navController: NavController) {
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),  // v1.8: dock clearance
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // v1.5.5: Settings splits into General / Debug sub-tabs —
@@ -758,7 +758,7 @@ private fun ActivityTab(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),  // v1.8: dock clearance
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items.forEach { item ->
@@ -947,7 +947,7 @@ private fun LocalActivityList(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 110.dp),  // v1.8: dock clearance
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             shown.forEach { entry ->

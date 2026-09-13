@@ -149,7 +149,7 @@ private fun AnimeWatchlistContent(
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 24.dp),
+            contentPadding = PaddingValues(bottom = 110.dp),  // v1.8: clear the floating dock
         ) {
             item {
                 LibraryHeader(

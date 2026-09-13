@@ -219,7 +219,7 @@ fun WatchlistScreen(navController: NavController) {
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 8.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp),  // v1.8: clear the floating dock
                     ) {
                         items(filtered, key = { it.anilistId }) { entry ->
                             AnimeCard(

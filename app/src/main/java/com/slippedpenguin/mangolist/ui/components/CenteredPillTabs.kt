@@ -3,6 +3,7 @@ package com.slippedpenguin.mangolist.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,11 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import com.slippedpenguin.mangolist.ui.theme.brandGradient
 
 /*
  * CenteredPillTabs — v1.5.6. Centered, pill-style tab row used by the
@@ -35,6 +37,10 @@ import com.slippedpenguin.mangolist.ui.theme.TextSecondary
  * v1.5.8: `showLabels` — when false the text label is dropped entirely so
  * the row is pure icons (Profile's tab row). `tabs` strings still drive
  * accessibility content descriptions in icon-only mode.
+ *
+ * v1.8 redesign: the selected pill fills with the brand gradient
+ * (periwinkle→violet) and its label flips to on-primary — pills now read
+ * as the app's accent instead of a translucent tint.
  */
 @Composable
 fun CenteredPillTabs(
@@ -54,33 +60,33 @@ fun CenteredPillTabs(
     ) {
         tabs.forEachIndexed { index, label ->
             val selected = selectedIndex == index
-            Row(
+            Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(
-                        if (selected) Accent.copy(alpha = 0.22f)
+                        if (selected) brandGradient()
                         else MaterialTheme.colorScheme.surfaceContainerHigh,
                     )
                     .clickable { onSelect(index) }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                icons?.getOrNull(index)?.let { icon ->
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = if (showLabels) null else label,
-                        tint = if (selected) Accent else TextSecondary,
-                        modifier = Modifier.size(if (showLabels) 16.dp else 18.dp),
-                    )
-                }
-                if (showLabels) {
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (selected) Accent else TextSecondary,
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    icons?.getOrNull(index)?.let { icon ->
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = if (showLabels) null else label,
+                            tint = if (selected) MaterialTheme.colorScheme.onPrimary else TextSecondary,
+                            modifier = Modifier.size(if (showLabels) 16.dp else 18.dp),
+                        )
+                    }
+                    if (showLabels) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimary else TextSecondary,
+                        )
+                    }
                 }
             }
         }

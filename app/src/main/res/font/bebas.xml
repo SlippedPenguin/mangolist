@@ -1,0 +1,18 @@
+<?xml version="1.1" encoding="utf-8"?>
+<!--
+  Bebas Neue — downloadable Google Fonts display face. Used for the
+  display/headline tier (screen titles, greeting, tier letters) to give
+  MangoList its condensed-poster identity. Falls back to the platform
+  default if Google Play services can't fetch it.
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <font
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:fontProviderAuthority="com.google.android.gms.fonts"
+        app:fontProviderPackage="com.google.android.gms"
+        app:fontProviderQuery="Bebas Neue"
+        app:fontProviderCerts="@array/com_google_android_gms_fonts_certs" />
+</font-family>

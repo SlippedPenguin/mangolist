@@ -68,7 +68,8 @@ fun AnimePosterCard(
                 .clickable { onClick() },
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                // v1.8: true-black tiles, hairline-separated.
+                containerColor = MaterialTheme.colorScheme.surface,
             ),
             // v1.5.0: hairline border keeps poster tiles crisp on the
             // dark Explore carousels (Anihyou-style flat surfaces).

@@ -332,7 +332,7 @@ fun AiringScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 8.dp),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp),  // v1.8: clear the floating dock
                     ) {
                         days.forEach { dayLabel ->
                             val daySlots = grouped[dayLabel].orEmpty()

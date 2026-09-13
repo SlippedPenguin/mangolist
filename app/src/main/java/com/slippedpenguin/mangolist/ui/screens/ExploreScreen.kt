@@ -240,7 +240,7 @@ fun ExploreScreen(navController: NavController, forcedMediaType: String? = null)
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = TextFieldDefaults.colors(
-                unfocusedContainerColor = TierUnranked.copy(alpha = 0.25f),
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,  // v1.8
             ),
         )
 
@@ -446,7 +446,7 @@ private fun CarouselColumn(
     val emptyAccent = if (mediaType == "MANGA") "manga" else "anime"
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 110.dp),  // v1.8: clear the floating dock
     ) {
         if (!allLoaded) {
             item(key = "loading_initial") {
@@ -504,7 +504,7 @@ private fun CarouselColumn(
                 onCardClick = onCardClick,
             )
         }
-        item(key = "footer_spacer") { Spacer(Modifier.height(24.dp)) }
+        item(key = "footer_spacer") { Spacer(Modifier.height(96.dp)) }  // v1.8: dock clearance
     }
 }
 

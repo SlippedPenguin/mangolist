@@ -95,12 +95,16 @@ fun AnimeCard(
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .then(interaction),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            // v1.8: cards sit on the true-black canvas and barely lift —
+            // depth comes from the hairline, not gray boxes.
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
         // v1.5.0: subtle hairline border + shadow-less depth (Anihyou-style
         // cards read as layered surfaces, not raised shadows).
         border = BorderStroke(1.dp, BorderSubtle),
-        shape = RoundedCornerShape(16.dp),
+        // v1.8: inherit the app shape scale (shapes.medium = 16dp) so every
+        // card in the app shares one geometry language.
+        shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp,
             pressedElevation = 2.dp,
