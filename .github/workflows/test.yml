@@ -1,0 +1,45 @@
+name: Unit Tests
+
+# Fast verification loop — runs the JVM unit suite on every push to main so
+# changes are proven without cutting a release tag. Mirrors release.yml's
+# pins (JDK 17 temurin, Gradle 8.11.1) so "green here" predicts "green at
+# tag time". The Android SDK comes preinstalled on ubuntu-latest runners.
+#
+# No local.properties needed: app/build.gradle.kts defaults the AniList
+# BuildConfig fields to empty strings when the file is absent, and unit
+# tests never touch the network. Apollo codegen reads the pinned in-repo
+# app/src/main/graphql/schema.graphqls (the introspection download task it
+# depends on hits AniList once, same as release.yml does today).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # allow manual re-runs from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Same pin as release.yml (AGP 8.7.3 needs Gradle 8.9+).
+          gradle-version: '8.11.1'
+          cache-read-only: false
+
+      - name: Run unit tests
+        run: gradle --no-daemon testDebugUnitTest ${{ runner.debug == 'true' && '--info' || '' }}
