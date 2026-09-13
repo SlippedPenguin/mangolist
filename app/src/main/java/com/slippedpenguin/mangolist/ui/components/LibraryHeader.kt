@@ -37,6 +37,12 @@ import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
 
 /**
+ * v1.9: library presentation mode — classic rows or ManGo-style poster grid.
+ * Lives here because the header owns the toggle and both tabs share it.
+ */
+enum class LibraryViewMode { LIST, GRID }
+
+/**
  * Compact library header shared by the Anime and Manga destinations.
  *
  * v1.5.6: the "Discover" button is gone; the top-right corner now holds
@@ -60,12 +66,6 @@ fun LibraryHeader(
     viewMode: LibraryViewMode = LibraryViewMode.LIST,
     onViewModeChange: (LibraryViewMode) -> Unit = {},
 ) {
-
-/**
- * v1.9: library presentation mode — classic rows or ManGo-style poster grid.
- * Lives here because the header owns the toggle and both tabs share it.
- */
-enum class LibraryViewMode { LIST, GRID }
     var filterMenuOpen by remember { mutableStateOf(false) }
     var sortMenuOpen by remember { mutableStateOf(false) }
 

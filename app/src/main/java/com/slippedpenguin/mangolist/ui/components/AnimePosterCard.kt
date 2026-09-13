@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,23 +100,23 @@ fun AnimePosterCard(
                             )
                         ),
                 )
-            }
-            // v1.9: tier letter badge, top-right corner of the poster.
-            if (entry.tier != null) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(tierColor(entry.tier).copy(alpha = 0.9f))
-                        .padding(horizontal = 7.dp, vertical = 2.dp),
-                ) {
-                    Text(
-                        text = entry.tier,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF0A0A14),
-                        fontWeight = FontWeight.ExtraBold,
-                    )
+                // v1.9: tier letter badge, top-right corner of the poster.
+                if (entry.tier != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(tierColor(entry.tier).copy(alpha = 0.9f))
+                            .padding(horizontal = 7.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            text = entry.tier,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF0A0A14),
+                            fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
                 }
             }
         }
