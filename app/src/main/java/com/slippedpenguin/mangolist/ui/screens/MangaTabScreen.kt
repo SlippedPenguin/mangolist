@@ -124,6 +124,7 @@ private fun MangaWatchlistContent(
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
     val dao = app.database.animeDao()  // v1.9: for one-tap progress writes
+    val scope = rememberCoroutineScope()  // v1.9: swipe/quick-increment writes
     val entries by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
@@ -147,6 +148,7 @@ private fun MangaWatchlistContent(
         }
     }
     val sorted = remember(filtered, sortMode) { sortLibraryEntries(filtered, sortMode) }
+    val gridRows = remember(sorted) { sorted.chunked(3) }  // v1.9 grid rows
 
     Column(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
@@ -201,7 +203,6 @@ private fun MangaWatchlistContent(
                 // empty state, and dock clearance in every mode). Posters
                 // route to Detail; swipe/quick-increment are list-mode
                 // features — grid cells are pure browse.
-                val gridRows = remember(sorted) { sorted.chunked(3) }
                 items(gridRows.size, key = { rowIdx -> "grid_row_$rowIdx" }) { rowIdx ->
                     val rowEntries = gridRows[rowIdx]
                     Row(
