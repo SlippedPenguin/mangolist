@@ -17,7 +17,7 @@ import com.slippedpenguin.mangolist.R
  *   "Big Manga Energy" voice — was faked with ExtraBold Roboto since v1).
  * - Everything else: **Inter** (modern UI grotesque, tightened tracking).
  *
- * Both are downloadable Google Fonts (res/font/*.xml): zero APK bloat,
+ * Both are downloadable Google Fonts (res/font XMLs): zero APK bloat,
  * fetched by Play services on first run. The value/constructor fallback
  * chain keeps every style readable while fonts stream in.
  *
