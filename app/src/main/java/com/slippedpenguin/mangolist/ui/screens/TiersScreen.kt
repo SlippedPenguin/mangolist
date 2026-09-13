@@ -44,13 +44,14 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionInRoot
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.slippedpenguin.mangolist.AnimeApp
 import com.slippedpenguin.mangolist.data.EloEngine
@@ -126,6 +127,13 @@ fun TiersScreen(navController: NavController) {
     // mutates. Null otherwise — the UI then renders straight from Room flows.
     var dragSections by remember { mutableStateOf<List<TierSection>?>(null) }
     var dragEntryId by remember { mutableStateOf<Int?>(null) }
+    // The finger's root Y, accumulated per pointer event from the drag-start
+    // center. Doubles as the drop probe AND the anchor for the visual
+    // translation: the card draws at (probe − its CURRENT resting center),
+    // evaluated at draw time — so when a reorder shifts the card's resting
+    // slot mid-drag, the translation compensates and the card stays glued
+    // to the finger instead of jumping.
+    var dragProbeY by remember { mutableStateOf(0f) }
     var isRefreshing by remember { mutableStateOf(false) }
     // Bounds in root coordinates, refreshed on every layout pass.
     val rowBounds = remember { mutableMapOf<Int, Rect>() }
@@ -145,12 +153,14 @@ fun TiersScreen(navController: NavController) {
         displaySections.firstOrNull { s -> s.entries.any { it.anilistId == id } }?.tier
     }
 
-    fun resolveDropTarget(fingerY: Float, draggedId: Int): Pair<String?, Int>? {
-        // 1) A row under the finger (skipping the dragged card itself, and
-        //    rows that no longer exist in any section) = insert above it.
+    fun resolveDropTarget(draggedCenterY: Float, draggedId: Int): Pair<String?, Int>? {
+        // 1) A row whose bounds contain the dragged card's center (skipping
+        //    the dragged card itself, and rows that no longer exist in any
+        //    section) = insert above it. The dragged card's own bounds act
+        //    as the finger proxy: wherever the card is, the finger is.
         for ((id, rect) in rowBounds) {
             if (id == draggedId) continue
-            if (fingerY >= rect.top && fingerY <= rect.bottom) {
+            if (draggedCenterY >= rect.top && draggedCenterY <= rect.bottom) {
                 val section = displaySections.firstOrNull { s ->
                     s.entries.any { it.anilistId == id }
                 } ?: continue
@@ -162,7 +172,7 @@ fun TiersScreen(navController: NavController) {
         //    the tier the card already sits in (no-op move).
         for ((tier, rect) in dropZoneBounds) {
             if (tier == draggedSection) continue
-            if (fingerY >= rect.top && fingerY <= rect.bottom) {
+            if (draggedCenterY >= rect.top && draggedCenterY <= rect.bottom) {
                 val size = displaySections.firstOrNull { it.tier == tier }?.entries?.size ?: 0
                 return tier to size
             }
@@ -170,21 +180,27 @@ fun TiersScreen(navController: NavController) {
         // 3) A tier header (empty tiers have their drop zone right below,
         //    but headers are the wider, easier target).
         for ((tier, rect) in headerBounds) {
-            if (fingerY >= rect.top && fingerY <= rect.bottom) return tier to 0
+            if (draggedCenterY >= rect.top && draggedCenterY <= rect.bottom) return tier to 0
         }
         return null
     }
 
     fun startDrag(entry: AnimeEntry) {
+        // The card is visible and laid out by the time it can be long-pressed,
+        // so its resting bounds are registered. (Null bounds would mean a
+        // recomposition raced the gesture — bail out instead of mis-dropping.)
+        val startCenter = rowBounds[entry.anilistId]?.center?.y ?: return
+        dragProbeY = startCenter
         dragEntryId = entry.anilistId
         // Freeze the flows into the mutable gesture snapshot.
         dragSections = flowSections
     }
 
-    fun dragTo(fingerY: Float) {
+    fun dragTo(deltaY: Float) {
         val id = dragEntryId ?: return
+        dragProbeY += deltaY
         val current = displaySections
-        val target = resolveDropTarget(fingerY, id) ?: return
+        val target = resolveDropTarget(dragProbeY, id) ?: return
         val currentSpot = current.firstOrNull { s -> s.entries.any { it.anilistId == id } }
             ?.let { s -> s.tier to s.entries.indexOfFirst { it.anilistId == id } }
         if (currentSpot != null && currentSpot != target) {
@@ -203,6 +219,7 @@ fun TiersScreen(navController: NavController) {
         }
         dragSections = null
         dragEntryId = null
+        dragProbeY = 0f
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -305,10 +322,11 @@ fun TiersScreen(navController: NavController) {
                             sectionEntries = section.entries,
                             isDragging = dragEntryId == entry.anilistId,
                             dragActive = dragActive,
+                            dragProbeY = dragProbeY,
                             navController = navController,
                             rowBounds = rowBounds,
                             onDragStart = ::startDrag,
-                            onDrag = ::dragTo,
+                            onDragDelta = ::dragTo,
                             onDragEnd = ::endDrag,
                         )
                     }
@@ -343,34 +361,48 @@ private fun TierCard(
     sectionEntries: List<AnimeEntry>,
     isDragging: Boolean,
     dragActive: Boolean,
+    dragProbeY: Float,
     navController: NavController,
     rowBounds: MutableMap<Int, Rect>,
     onDragStart: (AnimeEntry) -> Unit,
-    onDrag: (Float) -> Unit,
+    onDragDelta: (Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
     val rankText = rankWithinTierText(entry, sectionEntries)
-    var cardModifier = Modifier
-        .onGloballyPositioned { rowBounds[entry.anilistId] = it.boundsInRoot() }
-    if (isDragging) {
-        cardModifier = cardModifier.graphicsLayer {
-            scaleX = 1.03f
-            scaleY = 1.03f
-        }
-    }
+    // OUTER box: registers the resting bounds (both the drop-probe reference
+    // and the translation anchor — they update after every reorder's layout
+    // pass, which is what keeps the card glued to the finger).
     Box(
-        modifier = cardModifier.pointerDragInput(
-            onDragStart = { onDragStart(entry) },
-            onDrag = onDrag,
-            onDragEnd = onDragEnd,
-        ),
+        modifier = Modifier.onGloballyPositioned { rowBounds[entry.anilistId] = it.boundsInRoot() },
     ) {
-        AnimeCard(
-            entry = entry,
-            rankText = rankText,
-            onClick = if (dragActive) ({}) else ({ navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") }),
-            onLongClick = {},
-        )
+        // INNER box: carries the gesture + the visual translation. The layer
+        // lambda reads dragProbeY (a State) and the freshest resting bounds at
+        // draw time, so translation = probe − currentRestingCenter always.
+        Box(
+            modifier = Modifier
+                .zIndex(if (isDragging) 1f else 0f)
+                .graphicsLayer {
+                    if (isDragging) {
+                        val resting = rowBounds[entry.anilistId]
+                        translationY = if (resting != null) dragProbeY - resting.center.y else 0f
+                        scaleX = 1.03f
+                        scaleY = 1.03f
+                        shadowElevation = 16f
+                    }
+                }
+                .pointerDragInput(
+                    onDragStart = { onDragStart(entry) },
+                    onDragDelta = onDragDelta,
+                    onDragEnd = onDragEnd,
+                ),
+        ) {
+            AnimeCard(
+                entry = entry,
+                rankText = rankText,
+                onClick = if (dragActive) ({}) else ({ navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") }),
+                onLongClick = {},
+            )
+        }
     }
 }
 
@@ -417,17 +449,19 @@ private fun DropZone(tier: String?, highlighted: Boolean, modifier: Modifier = M
  * pointerDragInput — tiny helper wrapping detectDragGesturesAfterLongPress
  * into a reusable Modifier. Lives here because only the tierlist needs it.
  * The long-press threshold is the system default (~400ms), so the gesture
- * reads as "hold, then move" and never fights plain taps.
+ * reads as "hold, then move" and never fights plain taps. `onDragDelta`
+ * forwards the vertical pointer movement per event; the screen accumulates
+ * it and hit-tests startCenter + offset (see TiersScreen.dragTo).
  */
 private fun Modifier.pointerDragInput(
     onDragStart: () -> Unit,
-    onDrag: (Float) -> Unit,
+    onDragDelta: (Float) -> Unit,
     onDragEnd: () -> Unit,
 ): Modifier = this.then(
     Modifier.pointerInput(Unit) {
         detectDragGesturesAfterLongPress(
             onDragStart = { onDragStart() },
-            onDrag = { change, _ -> onDrag(change.positionInRoot().y) },
+            onDrag = { change, _ -> onDragDelta(change.positionChange().y) },
             onDragEnd = onDragEnd,
             onDragCancel = onDragEnd,
         )
@@ -480,9 +514,8 @@ private fun TierIntroCard(
                 onClick = onRankHeadToHead,
                 enabled = unrankedCount > 0,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = if (unrankedCount > 0) "Rank $unranked unranked head-to-head"
+            ) {                    Text(
+                    text = if (unrankedCount > 0) "Rank $unrankedCount unranked head-to-head"
                            else "Everything's ranked",
                     fontWeight = FontWeight.SemiBold,
                 )
