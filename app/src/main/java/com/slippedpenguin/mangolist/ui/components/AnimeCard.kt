@@ -71,21 +71,29 @@ import com.slippedpenguin.mangolist.ui.theme.tierColor
 fun AnimeCard(
     entry: AnimeEntry,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit = {},
-    onLongClick: () -> Unit = {},
+    onClick: (() -> Unit)? = {},
+    onLongClick: (() -> Unit)? = {},
     showTier: Boolean = true,
     rankText: String? = null,
     showSyncPending: Boolean = false,
     showFavorite: Boolean = false,
 ) {
+    // v1.7.1: onClick/onLongClick are nullable now — passing null renders a
+    // plain, gesture-free card. The tierlist drag wrapper needs this: a
+    // combinedClickable on the card consumes the long-press before the
+    // parent's long-press-drag detector can act, which is exactly why drags
+    // never started in v1.7.0. The wrapper owns tap + drag for tier cards.
+    val interaction = if (onClick != null || onLongClick != null) {
+        Modifier.combinedClickable(
+            onClick = onClick ?: {},
+            onLongClick = onLongClick ?: {},
+        )
+    } else Modifier
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
+            .then(interaction),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),

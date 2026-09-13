@@ -58,6 +58,37 @@ class RankSession private constructor(
             )
             return session.advance()
         }
+
+        /**
+         * v1.7.1: eligibility gate for head-to-head ranking. Comparing
+         * titles you haven't finished produces noise judgments, and
+         * comparing across mediums is meaningless (user feedback: "you
+         * can't rank manga and anime head to head — they're different
+         * mediums"). A title enters the pool only when a judgment about it
+         * is actually informed:
+         *   - rated (personalScore > 0 — a rating IS a judgment), or
+         *   - completed (status == "completed"), or
+         *   - reached its known total (episodes/chapters/volumes).
+         * Medium matching is the CALLER's job (seed one session per
+         * mediaType). Unfinished + unrated titles stay out of h2h but can
+         * still be tiered manually via drag & drop — that's an explicit
+         * user decision, not an implied one.
+         *
+         * NOTE: progress-total logic mirrors AnimeCard.entryProgressTotal
+         * (kept in parity by hand — the data layer must not import
+         * ui.components).
+         */
+        fun isEligible(entry: AnimeEntry): Boolean {
+            if (entry.tier != null) return false // only unranked enter the pool
+            if ((entry.personalScore ?: 0) > 0) return true
+            if (entry.status == "completed") return true
+            val total = when {
+                entry.format == "NOVEL" || entry.format == "LIGHT_NOVEL" -> entry.volumes ?: entry.episodes
+                entry.mediaType == "MANGA" -> entry.chapters ?: entry.episodes
+                else -> entry.episodes
+            }
+            return total != null && total > 0 && entry.currentEp >= total
+        }
     }
 
     /**
