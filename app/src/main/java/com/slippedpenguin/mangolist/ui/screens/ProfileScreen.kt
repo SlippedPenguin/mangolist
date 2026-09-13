@@ -322,6 +322,11 @@ fun ProfileScreen(navController: NavController) {
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
+                                    // v1.7: cancel any queued auto-push BEFORE the
+                                    // token disappears — a pending SyncWorker that ran
+                                    // after clear() would fail-and-retry with no way
+                                    // to authenticate (and retry() keeps it alive).
+                                    com.slippedpenguin.mangolist.work.SyncWorker.cancel(context)
                                     app.tokenStore.clear()
                                     Toast.makeText(context, "Signed out", Toast.LENGTH_SHORT).show()
                                 }

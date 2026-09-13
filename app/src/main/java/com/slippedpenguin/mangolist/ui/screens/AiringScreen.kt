@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -410,6 +411,25 @@ private fun AiringCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(12.dp),
     ) {
+        // v1.7: banner-image accent bar — echoes the detail screen's hero
+        // gradient. Painted only when the slot carries a banner color hint
+        // (the fetched bannerImage URL is used by Coil elsewhere); a plain
+        // tier-neutral accent keeps cards without banners clean.
+        if (slot.bannerImage != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.55f),
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.55f),
+                            )
+                        )
+                    ),
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

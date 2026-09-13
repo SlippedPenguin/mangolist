@@ -91,5 +91,14 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.REPLACE, request)
         }
+
+        /**
+         * v1.7: drop any queued auto-push — used on sign-out, so a worker
+         * whose owner just logged out can't push with a revoked-context
+         * token. No-op when nothing is queued.
+         */
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        }
     }
 }

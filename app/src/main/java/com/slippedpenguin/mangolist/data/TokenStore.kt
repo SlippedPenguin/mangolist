@@ -46,7 +46,18 @@ class TokenStore(private val context: Context) {
         }
     }
 
+    /**
+     * v1.7: sign-out wipes ONLY the AniList auth/session keys. Device-level
+     * preferences (score scale) survive — a fresh sign-in on the same device
+     * should not reset UI settings. (The previous blanket clear() reset the
+     * user's score scale on every logout.)
+     */
     suspend fun clear() {
-        context.tokenDataStore.edit { it.clear() }
+        context.tokenDataStore.edit { prefs ->
+            prefs.remove(tokenKey)
+            prefs.remove(userIdKey)
+            prefs.remove(userNameKey)
+            prefs.remove(avatarUrlKey)
+        }
     }
 }
