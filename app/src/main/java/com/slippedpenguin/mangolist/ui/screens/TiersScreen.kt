@@ -1,3 +1,8 @@
+@file:OptIn(
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
+    androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class,
+)
 package com.slippedpenguin.mangolist.ui.screens
 
 import androidx.compose.animation.core.animateDpAsState
@@ -115,7 +120,6 @@ fun TiersScreen(navController: NavController) {
     val allEntries by dao.observeAll().collectAsState(initial = emptyList())
     val accessToken by app.tokenStore.accessToken.collectAsState(initial = null)
     val userId      by app.tokenStore.userId.collectAsState(initial = null)
-    val scoreScale by app.tokenStore.scoreScale.collectAsState(initial = ScoreScale.Default)
 
     val scoredUnranked = remember(allEntries) {
         allEntries.count { it.tier == null && (it.personalScore ?: 0) > 0 }
@@ -147,9 +151,12 @@ fun TiersScreen(navController: NavController) {
     val draggedSection: String? = dragEntryId?.let { id ->
         displaySections.firstOrNull { s -> s.entries.any { it.anilistId == id } }?.tier
     }
-    val pendingTarget: Pair<String?, Int>? = if (dragActive && dragEntryId != null) {
-        resolveDropTarget(displaySections, rowBounds, dropZoneBounds, headerBounds, dragProbe, dragEntryId, draggedSection)
-    } else null
+    val pendingTarget: Pair<String?, Int>? = run {
+        val id = dragEntryId
+        if (dragActive && id != null) {
+            resolveDropTarget(displaySections, rowBounds, dropZoneBounds, headerBounds, dragProbe, id, draggedSection)
+        } else null
+    }
 
     fun startDrag(entry: AnimeEntry) {
         val anchor = rowBounds[entry.anilistId]?.center ?: return
