@@ -20,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +88,37 @@ fun AnimePosterCard(
                     label = entry.title,
                     modifier = Modifier.fillMaxSize(),
                 )
+                // v1.9: bottom scrim so overlaid text stays legible on any
+                // cover art, and the tier badge anchors to the top-right.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(64.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f)),
+                            )
+                        ),
+                )
+            }
+            // v1.9: tier letter badge, top-right corner of the poster.
+            if (entry.tier != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(tierColor(entry.tier).copy(alpha = 0.9f))
+                        .padding(horizontal = 7.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = entry.tier,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF0A0A14),
+                        fontWeight = FontWeight.ExtraBold,
+                    )
+                }
             }
         }
 

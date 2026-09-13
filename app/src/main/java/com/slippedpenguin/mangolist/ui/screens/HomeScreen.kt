@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -88,7 +89,12 @@ fun HomeScreen(navController: NavController) {
     val favorites = remember(entries) { entries.filter { it.favourite } }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // v1.9: status-bar inset padding — the old TopAppBar used to
+            // supply this; without it the greeting rides up behind the
+            // camera cutout on tall devices.
+            .statusBarsPadding(),
         contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
     ) {
         item { OfflineBanner() }

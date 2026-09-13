@@ -5,6 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import com.slippedpenguin.mangolist.data.applyProgressDelta
+import com.slippedpenguin.mangolist.ui.components.AnimePosterCard
+import com.slippedpenguin.mangolist.ui.components.LibraryViewMode
+import com.slippedpenguin.mangolist.ui.components.SwipeableRow
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -114,11 +123,14 @@ private fun MangaWatchlistContent(
 ) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as AnimeApp }
+    val dao = app.database.animeDao()  // v1.9: for one-tap progress writes
     val entries by app.database.animeDao().observeAll()
         .collectAsState(initial = emptyList())
 
     var selectedStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var sortMode by rememberSaveable { mutableStateOf(LibrarySortMode.UPDATED) }
+    // v1.9: ManGo-style poster-grid view toggle (list is the default).
+    var viewMode by rememberSaveable { mutableStateOf(LibraryViewMode.LIST) }
     val mangaEntries = remember(entries) { entries.filter { it.mediaType == "MANGA" } }
     val counts = remember(mangaEntries) {
         buildMap<String?, Int> {
@@ -153,6 +165,8 @@ private fun MangaWatchlistContent(
                     onSelectStatus = { selectedStatus = it },
                     sortMode = sortMode,
                     onSortModeChange = { sortMode = it },
+                    viewMode = viewMode,
+                    onViewModeChange = { viewMode = it },
                     mediaType = "MANGA",
                 )
             }
@@ -181,14 +195,51 @@ private fun MangaWatchlistContent(
                         }
                     }
                 }
+            } else if (viewMode == LibraryViewMode.GRID) {
+                // v1.9: ManGo-style poster grid, rendered as 3-up rows
+                // inside the one scroll container (keeps the header, the
+                // empty state, and dock clearance in every mode). Posters
+                // route to Detail; swipe/quick-increment are list-mode
+                // features — grid cells are pure browse.
+                val gridRows = remember(sorted) { sorted.chunked(3) }
+                items(gridRows.size, key = { rowIdx -> "grid_row_$rowIdx" }) { rowIdx ->
+                    val rowEntries = gridRows[rowIdx]
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        rowEntries.forEach { entry ->
+                            AnimePosterCard(
+                                entry = entry,
+                                modifier = Modifier.weight(1f),
+                                onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
+                            )
+                        }
+                        repeat(3 - rowEntries.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
             } else {
                 items(sorted, key = { it.anilistId }) { entry ->
-                    AnimeCard(
-                        entry = entry,
-                        onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
-                        showSyncPending = true,
-                        showFavorite = true,
-                    )
+                    // v1.9: swipe right +1 / left −1 + tap-to-+1 pill, both
+                    // sharing Detail's write semantics via applyProgressDelta.
+                    SwipeableRow(
+                        onSwipeRight = {
+                            scope.launch { applyProgressDelta(dao, app, entry, +1) }
+                        },
+                        onSwipeLeft = {
+                            scope.launch { applyProgressDelta(dao, app, entry, -1) }
+                        },
+                    ) {
+                        AnimeCard(
+                            entry = entry,
+                            onClick = { navController.navigate("detail/${entry.mediaType}/${entry.anilistId}") },
+                            showSyncPending = true,
+                            showFavorite = true,
+                            onQuickIncrement = {
+                                scope.launch { applyProgressDelta(dao, app, entry, +1) }
+                            },
+                        )
+                    }
                 }
             }
         }

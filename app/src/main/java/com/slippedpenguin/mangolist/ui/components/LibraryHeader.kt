@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,7 +57,15 @@ fun LibraryHeader(
     sortMode: LibrarySortMode,
     onSortModeChange: (LibrarySortMode) -> Unit,
     mediaType: String = "ANIME",
+    viewMode: LibraryViewMode = LibraryViewMode.LIST,
+    onViewModeChange: (LibraryViewMode) -> Unit = {},
 ) {
+
+/**
+ * v1.9: library presentation mode — classic rows or ManGo-style poster grid.
+ * Lives here because the header owns the toggle and both tabs share it.
+ */
+enum class LibraryViewMode { LIST, GRID }
     var filterMenuOpen by remember { mutableStateOf(false) }
     var sortMenuOpen by remember { mutableStateOf(false) }
 
@@ -94,6 +104,23 @@ fun LibraryHeader(
                 // sort icon is up/down arrows (SwapVert) so the two corner
                 // buttons are unmistakable — previously both read as "three
                 // lines" and users couldn't tell which sorted what.
+                // v1.9: leading view toggle — rows vs poster grid.
+                IconButton(
+                    onClick = {
+                        onViewModeChange(
+                            if (viewMode == LibraryViewMode.LIST) LibraryViewMode.GRID
+                            else LibraryViewMode.LIST
+                        )
+                    },
+                ) {
+                    Icon(
+                        imageVector = if (viewMode == LibraryViewMode.LIST) Icons.Outlined.GridView
+                                      else Icons.Outlined.FormatListBulleted,
+                        contentDescription = if (viewMode == LibraryViewMode.LIST) "Switch to grid view"
+                                            else "Switch to list view",
+                        tint = if (viewMode == LibraryViewMode.GRID) Accent else TextSecondary,
+                    )
+                }
                 Box {
                     IconButton(onClick = { filterMenuOpen = true }) {
                         Icon(

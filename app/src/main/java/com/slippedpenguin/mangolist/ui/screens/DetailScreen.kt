@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,9 +86,11 @@ import com.slippedpenguin.mangolist.ui.components.StatusPill
 import com.slippedpenguin.mangolist.ui.theme.Accent
 import com.slippedpenguin.mangolist.ui.theme.BgDeep
 import com.slippedpenguin.mangolist.ui.theme.TierC
+import com.slippedpenguin.mangolist.ui.theme.BorderSubtle
 import com.slippedpenguin.mangolist.ui.theme.TextMuted
 import com.slippedpenguin.mangolist.ui.theme.TextPrimary
 import com.slippedpenguin.mangolist.ui.theme.TextSecondary
+import com.slippedpenguin.mangolist.ui.theme.brandGradient
 import com.slippedpenguin.mangolist.ui.theme.tierColor
 import com.slippedpenguin.mangolist.work.SyncWorker
 import kotlinx.coroutines.CoroutineScope
@@ -992,7 +995,9 @@ private fun TrackingActionTile(
     Card(
         modifier = modifier.clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
+        // v1.9: shared hairline + geometry language.
+        border = BorderStroke(1.dp, BorderSubtle),
+        shape = MaterialTheme.shapes.small,
     ) {
         Column(
             modifier = Modifier
@@ -1033,39 +1038,106 @@ private fun EpisodeRow(
     onMinus: () -> Unit,
     onPlus: () -> Unit,
 ) {
+    // v1.9: real stepper. 56dp circular buttons (− muted, + brand gradient),
+    // the count in Bebas display type, and a thin gradient progress hairline
+    // underneath. Replaces the old default TextButton("−")/("+").
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, BorderSubtle),
+        shape = MaterialTheme.shapes.medium,
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            TextButton(onClick = onMinus, enabled = current > 0) {
-                Text(text = "−", style = MaterialTheme.typography.titleLarge)
-            }
-            Text(
-                text = "$current / ${total ?: "?"} $unit",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(vertical = 8.dp),
-                textAlign = TextAlign.Center,
-            )
-            TextButton(
-                onClick = onPlus,
-                enabled = total?.let { current < it } ?: true,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                Text(text = "+", style = MaterialTheme.typography.titleLarge)
+                StepperButton(
+                    symbol = "\u2212",
+                    enabled = current > 0,
+                    filled = false,
+                    onClick = onMinus,
+                )
+                Text(
+                    text = "$current / ${total ?: "?"} $unit",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                StepperButton(
+                    symbol = "+",
+                    enabled = total?.let { current < it } ?: true,
+                    filled = true,
+                    onClick = onPlus,
+                )
+            }
+            total?.let { t ->
+                if (t > 0) {
+                    Spacer(Modifier.height(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth((current.toFloat() / t.toFloat()).coerceIn(0f, 1f))
+                                .height(4.dp)
+                                .background(brandGradient()),
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+/*
+ * StepperButton — v1.9. Circular 56dp tap target for the progress stepper.
+ * `filled = true` renders the brand gradient (the primary +1 action);
+ * otherwise a quiet raised surface.
+ */
+@Composable
+private fun StepperButton(
+    symbol: String,
+    enabled: Boolean,
+    filled: Boolean,
+    onClick: () -> Unit,
+) {
+    val bg: Brush = when {
+        !enabled -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+                MaterialTheme.colorScheme.surfaceContainerHighest,
+            )
+        )
+        filled -> brandGradient()
+        else -> Brush.linearGradient(
+            listOf(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+        )
+    }
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(bg)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = symbol,
+            style = MaterialTheme.typography.headlineMedium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else TextMuted,
+        )
     }
 }
 
