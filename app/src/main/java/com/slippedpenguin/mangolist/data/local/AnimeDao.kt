@@ -26,7 +26,13 @@ interface AnimeDao {
     // v1.5.7: tiers are ranked by the user's own 0-100 score (their
     // out-of-10 rating), not the internal Elo counter. Elo remains only
     // as a tiebreaker so legacy rows keep a deterministic order.
-    @Query("SELECT * FROM anime_entries WHERE tier = :tier ORDER BY COALESCE(personalScore, 0) DESC, elo DESC")
+    // v1.7: rows the user has explicitly dragged carry a dense tierRank
+    // (0-based) and sort ahead of never-dragged rows, which keep the
+    // score/elo default. tierRank IS NULL goes last within its group.
+    @Query("""
+        SELECT * FROM anime_entries WHERE tier = :tier
+        ORDER BY (tierRank IS NULL), tierRank, COALESCE(personalScore, 0) DESC, elo DESC
+    """)
     fun observeByTier(tier: String): Flow<List<AnimeEntry>>
 
     @Query("SELECT * FROM anime_entries WHERE tier IS NULL ORDER BY updatedAt DESC")

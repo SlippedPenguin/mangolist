@@ -136,4 +136,35 @@ class AnimeEntryTest {
         assertNull(merged.chapters)
         assertEquals(4_000L, merged.updatedAt)
     }
+
+    // ---- v1.7 tierRank merge rules ----
+
+    @Test
+    fun `merge preserves the manually dragged tierRank in both directions`() {
+        val incoming = entry(updatedAt = 3_000L).copy(tier = "A", tierRank = 2)
+        val existing = entry(updatedAt = 4_000L, tier = "A", elo = 1700).copy(tierRank = 0)
+
+        val merged = incoming.preserveLocalFields(existing)
+        assertEquals(0, merged.tierRank) // local manual order wins over the payload
+    }
+
+    @Test
+    fun `merge adopts an incoming tierRank when the local row has none`() {
+        val incoming = entry(updatedAt = 3_000L).copy(tier = "A", tierRank = 4)
+        val existing = entry(updatedAt = 4_000L, tier = "A", elo = 1700) // tierRank null
+
+        val merged = incoming.preserveLocalFields(existing)
+        assertEquals(4, merged.tierRank)
+    }
+
+    @Test
+    fun `ranking writes do not bump updatedAt (sync contract pin)`() {
+        // A tier/elo/tierRank reassignment must keep updatedAt untouched —
+        // these fields are local-only, and a bump would drain no-op pushes
+        // to AniList for every drag (see TierListModel doc comment).
+        val before = entry(updatedAt = 1_234L)
+        val after = before.copy(tier = "S", elo = 1900, tierRank = 0)
+        assertEquals(before.updatedAt, after.updatedAt)
+        assertEquals(before.syncedAt, after.syncedAt)
+    }
 }

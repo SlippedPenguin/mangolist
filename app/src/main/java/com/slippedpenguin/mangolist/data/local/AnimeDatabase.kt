@@ -31,7 +31,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [AnimeEntry::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class AnimeDatabase : RoomDatabase() {
@@ -95,6 +95,24 @@ abstract class AnimeDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v5 → v6 — manual tierlist ordering (drag & drop).
+         *
+         * Adds nullable `tierRank INTEGER`. NULL = "never manually ordered"
+         * — those rows keep the v1.5.7 default ordering (personalScore DESC,
+         * elo DESC). Rows the user has explicitly dragged carry a dense rank
+         * (0-based, per tier) and sort ahead of the default-sorted rest.
+         * Additive nullable column, so no data is rewritten: existing rows
+         * keep NULL and their current visible order is unchanged on upgrade.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE anime_entries ADD COLUMN tierRank INTEGER"
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: AnimeDatabase? = null
 
@@ -105,7 +123,7 @@ abstract class AnimeDatabase : RoomDatabase() {
                     AnimeDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build().also { INSTANCE = it }
             }
         }

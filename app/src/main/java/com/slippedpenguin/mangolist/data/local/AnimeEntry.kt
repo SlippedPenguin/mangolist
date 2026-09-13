@@ -52,6 +52,10 @@ data class AnimeEntry(
     // Tierlist / Elo (local-only)
     val tier: String?,
     val elo: Int,
+    // v1.7: manual drag order inside a tier (0-based, dense). NULL = never
+    // manually ordered — those rows keep the score/elo default ordering.
+    // Local-only, never pushed to AniList, never used as a sync field.
+    val tierRank: Int? = null,
 
     // Tracking
     val currentEp: Int,
@@ -94,12 +98,14 @@ data class AnimeEntry(
                 syncedAt = existing.syncedAt ?: this.syncedAt,
                 tier = existing.tier ?: this.tier,
                 elo = existing.elo ?: this.elo,
+                tierRank = existing.tierRank ?: this.tierRank,
                 listEntryId = this.listEntryId ?: existing.listEntryId,
             )
         } else {
             this.copy(
                 tier = existing.tier ?: this.tier,
                 elo = existing.elo ?: this.elo,
+                tierRank = existing.tierRank ?: this.tierRank,
             )
         }
     }
